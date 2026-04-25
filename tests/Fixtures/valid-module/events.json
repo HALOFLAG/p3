@@ -1,0 +1,47 @@
+[
+  {
+    "id": "warehouse-investigation",
+    "name": "Warehouse Investigation",
+    "type": "exploration",
+    "tn": 10,
+    "trigger": { "type": "tileEnter", "tileId": "warehouse" },
+    "stat": "skill",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "narrative": "You enter a dark warehouse.",
+    "outcomes": {
+      "success": {
+        "narrative": "You find the manifest.",
+        "effects": [
+          { "type": "setFlag", "key": "warehouse_clue_a", "value": true },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "Footprints lead deeper.",
+        "effects": [ { "type": "grantResource", "key": "clue", "amount": 1 } ]
+      },
+      "failure": {
+        "narrative": "Something heard you.",
+        "effects": [
+          { "type": "triggerBattle", "battleId": "warehouse-guard" },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "warehouse-guard",
+    "name": "Warehouse Guard",
+    "type": "battle",
+    "tn": 12,
+    "trigger": { "type": "flag", "key": "trigger_warehouse_guard", "value": true },
+    "stat": "power",
+    "allowedActionTypes": ["combat"],
+    "narrative": "A guard confronts you.",
+    "outcomes": {
+      "success":        { "narrative": "Defeated.", "effects": [] },
+      "partialSuccess": { "narrative": "Wounded.",  "effects": [] },
+      "failure":        { "narrative": "Fled.",      "effects": [] }
+    }
+  }
+]

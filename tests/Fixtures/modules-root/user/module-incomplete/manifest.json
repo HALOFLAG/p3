@@ -1,0 +1,9 @@
+{
+  "id": "module-incomplete",
+  "name": "Incomplete Module",
+  "version": "0.1.0",
+  "author": "test",
+  "schemaVersion": 1,
+  "description": "Manifest present but other JSON files missing; Scanner should include it but Loader would fail.",
+  "estimatedPlayTime": "?"
+}

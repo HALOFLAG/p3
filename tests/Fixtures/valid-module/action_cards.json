@@ -1,0 +1,8 @@
+[
+  { "id": "careful-search",  "name": "Careful Search",  "type": "exploration",   "cost": 1, "tags": ["search", "perception"], "description": "Carefully investigate surroundings." },
+  { "id": "persuade",        "name": "Persuade",        "type": "communication", "cost": 1, "tags": ["persuade"],              "description": "Sincere attempt to convince." },
+  { "id": "basic-attack",    "name": "Basic Attack",    "type": "combat",        "cost": 1, "tags": ["attack"],                "description": "A simple strike.",
+    "combat": { "route": "rollBonus", "damageMultiplier": 1.0, "rollBonus": 0, "tags": [] } },
+  { "id": "integrate-intel", "name": "Integrate Intel", "type": "thinking",      "cost": 0, "tags": ["analysis"],              "description": "Connect the dots.", "usesPerTurn": 1 },
+  { "id": "investigate",     "name": "Investigate",     "type": "exploration",   "cost": 0, "tags": ["search"],                "description": "Ask for intel during an event.", "usesPerEvent": 2 }
+]

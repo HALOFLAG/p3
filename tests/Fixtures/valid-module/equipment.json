@@ -1,0 +1,44 @@
+[
+  {
+    "id": "broken-manifest",
+    "name": "Broken Caravan Manifest",
+    "slot": "accessoryB",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 1 },
+    "effectText": "Gain insight into the caravan."
+  },
+  {
+    "id": "hunter-bow",
+    "name": "Hunter's Bow",
+    "slot": "weapon",
+    "category": "weapon",
+    "allowedSlots": ["weapon", "offHand"],
+    "statBonuses": { "power": 1, "social": 0, "skill": 1, "intellect": 0 },
+    "weapon": { "hitBonus": 2, "damage": 3 },
+    "effectText": "Ranged attacks +1."
+  },
+  {
+    "id": "leather-boots",
+    "name": "Leather Boots",
+    "slot": "feet",
+    "category": "armor",
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "effectText": "+1 initiative via footwork."
+  },
+  {
+    "id": "scholar-robes",
+    "name": "Scholar Robes",
+    "slot": "body",
+    "category": "armor",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 1 },
+    "effectText": "Robes that aid clear thought."
+  },
+  {
+    "id": "lucky-charm",
+    "name": "Lucky Charm",
+    "slot": "accessoryA",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "effectText": "A small trinket."
+  }
+]

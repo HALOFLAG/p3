@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/tile.schema.json",
+  "title": "Tiles (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "terrain", "important", "allowedActionTypes"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "terrain": { "enum": ["town", "wilderness", "dungeon", "special"] },
+      "important": { "type": "boolean" },
+      "allowedActionTypes": {
+        "type": "array",
+        "items": { "enum": ["communication", "combat", "exploration", "thinking"] }
+      },
+      "tags": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Placement tags (plan B). Empty = neutral bridge. Non-empty: at least one adjacent placed tile must share a tag."
+      },
+      "copies": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "default": 1,
+        "description": "Number of deck copies. copies>1 seeds the same tile id consecutively in the deck and forces subsequent copies to be placed orthogonally adjacent to a previously-placed copy (forms a 2x1 / 3x1 corridor)."
+      },
+      "resources": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["key", "name", "perVisit"],
+          "properties": {
+            "key": { "type": "string" },
+            "name": { "type": "string" },
+            "perVisit": { "type": "integer", "minimum": 1 }
+          }
+        }
+      },
+      "onEnter": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/effect" }
+      }
+    }
+  },
+  "$defs": {
+    "effect": {
+      "oneOf": [
+        { "type": "object", "required": ["type", "key", "value"],
+          "properties": { "type": { "const": "setFlag" }, "key": { "type": "string" }, "value": {} },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "id"],
+          "properties": { "type": { "const": "grantEquipment" }, "id": { "type": "string" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "key", "amount"],
+          "properties": { "type": { "const": "grantResource" }, "key": { "type": "string" }, "amount": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "delta"],
+          "properties": { "type": { "const": "tileProgress" }, "delta": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "battleId"],
+          "properties": { "type": { "const": "triggerBattle" }, "battleId": { "type": "string" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "amount"],
+          "properties": { "type": { "const": "climaxTnIncrease" }, "amount": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "stat", "tn"],
+          "properties": {
+            "type": { "const": "rollCheck" },
+            "stat": { "enum": ["power", "social", "skill", "intellect"] },
+            "tn": { "type": "integer" },
+            "onFailure": { "type": "array", "items": { "$ref": "#/$defs/effect" } }
+          },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type"],
+          "properties": { "type": { "const": "drawEncounter" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "newTileId"],
+          "properties": {
+            "type": { "const": "transformTile" },
+            "newTileId": { "type": "string" },
+            "x": { "type": "integer" },
+            "y": { "type": "integer" },
+            "preservePlayerPosition": { "type": "boolean" }
+          },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "tags", "newTileId"],
+          "properties": {
+            "type": { "const": "transformTilesByTag" },
+            "tags": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "newTileId": { "type": "string" }
+          },
+          "additionalProperties": false }
+      ]
+    }
+  }
+}

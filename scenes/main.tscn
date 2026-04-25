@@ -1,0 +1,40 @@
+[gd_scene format=3 uid="uid://chmjh5x4n5h7q"]
+
+[ext_resource type="Script" uid="uid://drj4ud4awvnux" path="res://scripts/MainBootstrap.cs" id="1_main"]
+[ext_resource type="PackedScene" path="res://scenes/map/main_map.tscn" id="2_main_map"]
+
+[node name="Main" type="Control" unique_id=1261647667]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_main")
+
+[node name="MainMap" parent="." unique_id=701749555 instance=ExtResource("2_main_map")]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -192.0
+offset_right = 280.0
+offset_bottom = 208.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="HeaderLabel" type="Label" parent="." unique_id=1639636841]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 16.0
+offset_right = 300.0
+offset_bottom = 48.0
+grow_horizontal = 2
+text = "廢棄洋房調查 — Phase 1 Task 2 主地圖渲染"
+horizontal_alignment = 1

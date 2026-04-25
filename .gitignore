@@ -1,0 +1,32 @@
+# --- .NET / dotnet build artifacts ---
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# --- Godot ---
+.godot/
+*.godot.tmp
+*.import
+
+# --- IDE ---
+.idea/
+.vscode/
+.claude/
+
+# --- Backup files ---
+*.old
+*.bak
+*~
+
+# --- OS ---
+Thumbs.db
+.DS_Store
+
+# --- Spec rule (CLAUDE.md): never push oldplan_p2 to GitHub ---
+oldplan_p2/
+
+# --- User-local secrets ---
+*.env
+*.local.json

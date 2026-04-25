@@ -1,0 +1,105 @@
+[gd_scene format=3 uid="uid://b63ie61uvf3mi"]
+
+[ext_resource type="Script" path="res://scripts/Map/MainMapRenderer.cs" id="1_renderer"]
+[ext_resource type="Script" path="res://scripts/Map/CameraController.cs" id="2_camera"]
+[ext_resource type="PackedScene" path="res://scenes/ui/action_trigger_popup.tscn" id="3_popup"]
+
+[node name="MainMap" type="Control"]
+custom_minimum_size = Vector2(560, 400)
+layout_mode = 3
+anchors_preset = 0
+offset_right = 560.0
+offset_bottom = 400.0
+script = ExtResource("1_renderer")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.937, 0.886, 0.761, 1)
+mouse_filter = 2
+
+[node name="TileLayer" type="Node2D" parent="."]
+
+[node name="CameraNode" type="Node" parent="."]
+script = ExtResource("2_camera")
+
+[node name="Hud" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -180.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 200.0
+grow_horizontal = 0
+
+[node name="DrawTileButton" type="Button" parent="Hud"]
+layout_mode = 2
+text = "抽下一張地塊"
+
+[node name="ResetButton" type="Button" parent="Hud"]
+layout_mode = 2
+text = "回到玩家中心"
+
+[node name="DeckLabel" type="Label" parent="Hud"]
+layout_mode = 2
+text = "牌堆: 10"
+modulate = Color(1, 1, 1, 0.85)
+
+[node name="HeldLabel" type="Label" parent="Hud"]
+layout_mode = 2
+text = "持有: -"
+modulate = Color(1, 1, 1, 0.85)
+
+[node name="NextPreviewLabel" type="Label" parent="Hud"]
+layout_mode = 2
+text = "NEXT: -, -"
+modulate = Color(1, 1, 1, 0.85)
+
+[node name="ModeLabel" type="Label" parent="Hud"]
+layout_mode = 2
+text = "模式: 待命"
+modulate = Color(1, 1, 1, 0.85)
+
+[node name="HpLabel" type="Label" parent="Hud"]
+layout_mode = 2
+text = "HP: 12/12"
+modulate = Color(1, 1, 1, 0.85)
+
+[node name="HintLabel" type="Label" parent="Hud"]
+layout_mode = 2
+text = "點玩家所在格 → 行動"
+modulate = Color(1, 1, 1, 0.7)
+
+[node name="TurnLog" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = -120.0
+offset_right = -8.0
+offset_bottom = -8.0
+grow_vertical = 0
+text = "—— TURN LOG ——"
+vertical_alignment = 2
+modulate = Color(1, 1, 1, 0.85)
+
+[node name="ActionTriggerPopup" parent="." instance=ExtResource("3_popup")]
+layout_mode = 1
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 180.0
+offset_bottom = 200.0
+visible = false
+
+[node name="MoveConfirmDialog" type="ConfirmationDialog" parent="."]
+title = "確認移動"
+size = Vector2i(280, 120)
+ok_button_text = "確認移動"
+cancel_button_text = "取消"
+dialog_text = "確認移動到此地塊？"

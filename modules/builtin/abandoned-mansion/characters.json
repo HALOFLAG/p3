@@ -1,0 +1,78 @@
+[
+  {
+    "id": "scholar",
+    "name": "隱居學者 艾絲黛",
+    "stats": { "power": 1, "social": 2, "skill": 2, "intellect": 4 },
+    "hpMax": 14,
+    "specialty": "在書房/儀式廳等『重要地塊』進行思考判定時 +1；每大回合可免費使用 1 次『比對文獻』。",
+    "startingDeck": [
+      "scholar-cross-reference",
+      "scholar-arcane-lore",
+      "scholar-careful-read",
+      "scholar-decipher",
+      "scholar-note-taking",
+      "scholar-polite-inquiry",
+      "scholar-reassure",
+      "scholar-warding-chant",
+      "scholar-cold-observation",
+      "scholar-improvised-kit"
+    ]
+  },
+  {
+    "id": "guard",
+    "name": "退役護衛 霍肯",
+    "stats": { "power": 4, "social": 1, "skill": 2, "intellect": 2 },
+    "hpMax": 20,
+    "specialty": "戰鬥判定 +1；可替同伴承受一次致命攻擊（每局限用 1 次）。",
+    "startingDeck": [
+      "guard-strike",
+      "guard-overhand-smash",
+      "guard-shield-stance",
+      "guard-intimidate",
+      "guard-break-down-door",
+      "guard-overwatch",
+      "guard-rush",
+      "guard-brace",
+      "guard-field-patch",
+      "guard-roar"
+    ]
+  },
+  {
+    "id": "scout",
+    "name": "森林斥候 希爾",
+    "stats": { "power": 2, "social": 2, "skill": 4, "intellect": 1 },
+    "hpMax": 16,
+    "specialty": "移入野外地塊時不觸發遭遇判定；探索類判定 +1。",
+    "startingDeck": [
+      "scout-sneak",
+      "scout-search",
+      "scout-track",
+      "scout-pick-lock",
+      "scout-disarm-trap",
+      "scout-ambush",
+      "scout-evade",
+      "scout-signal",
+      "scout-observe",
+      "scout-whistle"
+    ]
+  },
+  {
+    "id": "occultist",
+    "name": "神秘學家 雷文",
+    "stats": { "power": 1, "social": 3, "skill": 2, "intellect": 3 },
+    "hpMax": 15,
+    "specialty": "對『邪靈/儀式』類戰鬥造成 +2 傷害；可識別任何含有 ritual 標籤的事件隱藏結果。",
+    "startingDeck": [
+      "occult-ward",
+      "occult-banish",
+      "occult-commune",
+      "occult-reveal",
+      "occult-protection",
+      "occult-chant",
+      "occult-curse-break",
+      "occult-inspire",
+      "occult-third-eye",
+      "occult-shield"
+    ]
+  }
+]

@@ -1,0 +1,35 @@
+[
+  {
+    "id": "town-square",
+    "name": "Town Square",
+    "terrain": "town",
+    "important": false,
+    "allowedActionTypes": ["communication", "thinking"],
+    "resources": [],
+    "onEnter": []
+  },
+  {
+    "id": "wilderness-path",
+    "name": "Wilderness Path",
+    "terrain": "wilderness",
+    "important": false,
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "herb", "name": "Herb", "perVisit": 1 }
+    ],
+    "onEnter": [
+      { "type": "rollCheck", "stat": "skill", "tn": 9, "onFailure": [ { "type": "drawEncounter" } ] }
+    ]
+  },
+  {
+    "id": "warehouse",
+    "name": "Abandoned Warehouse",
+    "terrain": "dungeon",
+    "important": true,
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "clue", "name": "Clue Fragment", "perVisit": 1 }
+    ],
+    "onEnter": []
+  }
+]

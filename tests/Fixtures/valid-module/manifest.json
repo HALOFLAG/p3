@@ -1,0 +1,9 @@
+{
+  "id": "test-valid",
+  "name": "Test Valid Module",
+  "version": "1.0.0",
+  "author": "test",
+  "schemaVersion": 1,
+  "description": "Fixture module used for M1 loader tests.",
+  "estimatedPlayTime": "30 minutes"
+}

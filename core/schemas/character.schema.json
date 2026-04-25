@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/character.schema.json",
+  "title": "Characters (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "stats", "hpMax", "startingDeck"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "stats": { "$ref": "#/$defs/stats" },
+      "hpMax": { "type": "integer", "minimum": 1 },
+      "specialty": { "type": "string" },
+      "startingDeck": { "type": "array", "items": { "type": "string" } },
+      "combatAbilities": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "description": { "type": "string" },
+            "rollBonus": { "type": "integer" },
+            "damageMultiplier": { "type": "number", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "stats": {
+      "type": "object",
+      "required": ["power", "social", "skill", "intellect"],
+      "properties": {
+        "power": { "type": "integer" },
+        "social": { "type": "integer" },
+        "skill": { "type": "integer" },
+        "intellect": { "type": "integer" }
+      }
+    }
+  }
+}

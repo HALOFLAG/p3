@@ -1,0 +1,217 @@
+[
+  {
+    "id": "trespasser",
+    "name": "洋房闖入者",
+    "description": "比你更早進入洋房的不速之客。他臉色蒼白、動作急躁，眼神不像活人。",
+    "stats": {
+      "hpMax": 15,
+      "attackPower": 3,
+      "evasion": 7,
+      "defense": 1,
+      "weakness": null
+    },
+    "encounterTn": 8,
+    "enemyActions": [
+      {
+        "id": "trespasser-flee",
+        "name": "倉皇撤退",
+        "kind": "flee",
+        "targeting": "lowestHp",
+        "weight": 1,
+        "trigger": { "type": "hpAtMost", "ratio": 0.3 },
+        "payload": { "damage": 0, "statusTag": null, "narrative": "他轉身奪門而出。" }
+      },
+      {
+        "id": "trespasser-strike",
+        "name": "慌亂揮擊",
+        "kind": "attack",
+        "targeting": "lowestHp",
+        "weight": 3,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": null, "narrative": "他胡亂揮舞手上的鏽刀。" }
+      }
+    ],
+    "lootEffects": [
+      { "type": "grantResource", "key": "clue", "amount": 1 },
+      { "type": "grantEquipment", "id": "rusty-revolver" }
+    ]
+  },
+  {
+    "id": "mirror-shadow",
+    "name": "鏡中影子",
+    "description": "從走廊盡頭的古鏡中爬出的黑色人影。它模仿著你們的動作，卻總慢半拍。",
+    "stats": {
+      "hpMax": 22,
+      "attackPower": 4,
+      "evasion": 9,
+      "defense": 2,
+      "weakness": "silver"
+    },
+    "encounterTn": 10,
+    "enemyActions": [
+      {
+        "id": "mirror-defend",
+        "name": "鏡面反照",
+        "kind": "defend",
+        "targeting": "lowestHp",
+        "weight": 2,
+        "trigger": { "type": "hpAtMost", "ratio": 0.4 },
+        "payload": { "damage": 0, "statusTag": "mirrored", "narrative": "鏡面凝成一道護盾。" }
+      },
+      {
+        "id": "mirror-prepare",
+        "name": "映影凝勢",
+        "kind": "prepare",
+        "targeting": "highestPower",
+        "weight": 1,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": "prepared", "narrative": "它屈身蓄力，鏡面擴散出裂紋。" }
+      },
+      {
+        "id": "mirror-strike",
+        "name": "倒映斬",
+        "kind": "attack",
+        "targeting": "highestPower",
+        "weight": 3,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": null, "narrative": "鏡中之影揮出冰冷的刀鋒。" }
+      }
+    ],
+    "lootEffects": [
+      { "type": "setFlag", "key": "mirror_shadow_defeated", "value": true },
+      { "type": "grantEquipment", "id": "silver-candelabra" }
+    ]
+  },
+  {
+    "id": "wandering-dead",
+    "name": "徘徊的亡者",
+    "description": "地下室外徘徊的三具枯槁身影。他們在生前顯然也曾站在同樣的祭壇前。",
+    "stats": {
+      "hpMax": 18,
+      "attackPower": 3,
+      "evasion": 6,
+      "defense": 1,
+      "weakness": "fire"
+    },
+    "encounterTn": 9,
+    "enemyActions": [
+      {
+        "id": "dead-grasp",
+        "name": "腐朽撕扯",
+        "kind": "attack",
+        "targeting": "random",
+        "weight": 3,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": null, "narrative": "枯槁的手抓向你們。" }
+      },
+      {
+        "id": "dead-swarm",
+        "name": "群起圍攻",
+        "kind": "attack",
+        "targeting": "lowestHp",
+        "weight": 2,
+        "trigger": { "type": "roundAtLeast", "round": 3 },
+        "payload": { "damage": 1, "statusTag": null, "narrative": "亡者一擁而上。" }
+      }
+    ],
+    "lootEffects": [
+      { "type": "grantResource", "key": "clue", "amount": 1 },
+      { "type": "grantEquipment", "id": "worn-leather-jacket" }
+    ]
+  },
+  {
+    "id": "wailing-wraith",
+    "name": "怨靈",
+    "description": "一道尖嘯著穿過石牆的慘白身影，據說這是洋房女主人殘留的最後一絲念想。",
+    "stats": {
+      "hpMax": 40,
+      "attackPower": 5,
+      "evasion": 11,
+      "defense": 3,
+      "weakness": "ritual"
+    },
+    "encounterTn": 12,
+    "enemyActions": [
+      {
+        "id": "wraith-shriek",
+        "name": "嘶嚎之擊",
+        "kind": "attack",
+        "targeting": "highestPower",
+        "weight": 3,
+        "trigger": { "type": "hpAtMost", "ratio": 0.5 },
+        "payload": { "damage": 1, "statusTag": "unnerved", "narrative": "淒厲的嘶吼震徹靈魂。" }
+      },
+      {
+        "id": "wraith-prepare",
+        "name": "凝怨",
+        "kind": "prepare",
+        "targeting": "lowestHp",
+        "weight": 1,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": "prepared", "narrative": "怨念在她指尖凝成死白色的光。" }
+      },
+      {
+        "id": "wraith-grasp",
+        "name": "冰冷碰觸",
+        "kind": "attack",
+        "targeting": "lowestHp",
+        "weight": 2,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": null, "narrative": "冰冷的指尖掠過你的肩頭。" }
+      }
+    ],
+    "lootEffects": [
+      { "type": "setFlag", "key": "wraith_pacified", "value": true },
+      { "type": "grantEquipment", "id": "family-amulet" },
+      { "type": "grantResource", "key": "clue", "amount": 2 }
+    ]
+  },
+  {
+    "id": "unnameable-one",
+    "name": "其名不可言者",
+    "description": "祭壇之下湧出的蠕動之物。無數觸手自地縫竄出，你甚至無法確定哪裡是它的『臉』。",
+    "stats": {
+      "hpMax": 60,
+      "attackPower": 6,
+      "evasion": 10,
+      "defense": 4,
+      "weakness": "ritual"
+    },
+    "encounterTn": 14,
+    "enemyActions": [
+      {
+        "id": "unnameable-rend",
+        "name": "觸手絞殺",
+        "kind": "attack",
+        "targeting": "highestPower",
+        "weight": 3,
+        "trigger": { "type": "hpAtMost", "ratio": 0.3 },
+        "payload": { "damage": 2, "statusTag": "grasped", "narrative": "多條觸手纏上最強壯的目標。" }
+      },
+      {
+        "id": "unnameable-prepare",
+        "name": "深淵低語",
+        "kind": "prepare",
+        "targeting": "lowestHp",
+        "weight": 1,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": "prepared", "narrative": "難以形容的聲音在石縫間迴盪。" }
+      },
+      {
+        "id": "unnameable-strike",
+        "name": "裂地一擊",
+        "kind": "attack",
+        "targeting": "lowestHp",
+        "weight": 2,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": null, "narrative": "觸手從意想不到的方向襲來。" }
+      }
+    ],
+    "lootEffects": [
+      { "type": "setFlag", "key": "mansion_truth_revealed", "value": true },
+      { "type": "setFlag", "key": "survivor_rescued", "value": true },
+      { "type": "setFlag", "key": "escaped_mansion", "value": true },
+      { "type": "grantEquipment", "id": "forbidden-tome" }
+    ]
+  }
+]

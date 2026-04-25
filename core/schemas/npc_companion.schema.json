@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/npc_companion.schema.json",
+  "title": "NPC Companions (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "stats", "hp", "actionPoints", "strategyTable"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "stats": {
+        "type": "object",
+        "required": ["power", "social", "skill", "intellect"],
+        "properties": {
+          "power": { "type": "integer" },
+          "social": { "type": "integer" },
+          "skill": { "type": "integer" },
+          "intellect": { "type": "integer" }
+        }
+      },
+      "hp": { "type": "integer", "minimum": 1 },
+      "specialty": { "type": "string" },
+      "actionPoints": { "type": "integer", "minimum": 1 },
+      "strategyTable": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["scene", "preferredActionTags"],
+          "properties": {
+            "scene": { "type": "string" },
+            "preferredActionTags": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "specialtyEffects": {
+        "description": "A3 · 結構化 Specialty 效果；由 CompanionAbilityHandler 於對應 trigger 自動執行。",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["trigger", "effect"],
+          "properties": {
+            "trigger": {
+              "type": "string",
+              "enum": ["BigRoundStart", "BigRoundEnd", "OnBattleStart", "OnBattleEnd",
+                       "OnEventStart", "OnEventResolved", "OnEnterTile"]
+            },
+            "condition": {
+              "type": "object",
+              "properties": {
+                "eventTypeAny": { "type": "array", "items": { "type": "string" } },
+                "tileImportant": { "type": "boolean" },
+                "tileTerrainAny": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "effect": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["healLowestHp", "healSelf", "bonusRoll", "grantResource"]
+                },
+                "amount": { "type": "integer" },
+                "duration": { "type": "string", "enum": ["NextRoll", "ThisEvent", "ThisBattle"] },
+                "key": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

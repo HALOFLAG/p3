@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/battle.schema.json",
+  "title": "Battles (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "description", "stats", "encounterTn", "enemyActions", "lootEffects"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "description": { "type": "string" },
+      "stats": {
+        "type": "object",
+        "required": ["hpMax", "attackPower", "evasion", "defense"],
+        "properties": {
+          "hpMax": { "type": "integer", "minimum": 1 },
+          "attackPower": { "type": "integer", "minimum": 0 },
+          "evasion": { "type": "integer", "minimum": 0 },
+          "defense": { "type": "integer", "minimum": 0 },
+          "weakness": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      },
+      "encounterTn": { "type": "integer", "minimum": 0 },
+      "enemyActions": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "required": ["id", "name", "kind", "targeting", "trigger", "weight", "payload"],
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "kind": { "enum": ["prepare", "attack", "useItem", "defend", "flee", "Prepare", "Attack", "UseItem", "Defend", "Flee"] },
+            "targeting": { "enum": ["lowestHp", "highestPower", "random", "LowestHp", "HighestPower", "Random"] },
+            "weight": { "type": "integer", "minimum": 1 },
+            "trigger": { "$ref": "#/$defs/trigger" },
+            "payload": {
+              "type": "object",
+              "required": ["damage"],
+              "properties": {
+                "damage": { "type": "integer", "minimum": 0 },
+                "statusTag": { "type": ["string", "null"] },
+                "narrative": { "type": ["string", "null"] }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "lootEffects": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/effect" }
+      }
+    }
+  },
+  "$defs": {
+    "trigger": {
+      "oneOf": [
+        { "type": "object", "required": ["type"],
+          "properties": { "type": { "const": "always" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "ratio"],
+          "properties": { "type": { "const": "hpAtMost" }, "ratio": { "type": "number", "minimum": 0, "maximum": 1 } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "ratio"],
+          "properties": { "type": { "const": "playerHpAtMost" }, "ratio": { "type": "number", "minimum": 0, "maximum": 1 } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "round"],
+          "properties": { "type": { "const": "roundAtLeast" }, "round": { "type": "integer", "minimum": 1 } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type"],
+          "properties": { "type": { "const": "preparedLastTurn" } },
+          "additionalProperties": false }
+      ]
+    },
+    "effect": {
+      "oneOf": [
+        { "type": "object", "required": ["type", "key", "value"],
+          "properties": { "type": { "const": "setFlag" }, "key": { "type": "string" }, "value": {} },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "id"],
+          "properties": { "type": { "const": "grantEquipment" }, "id": { "type": "string" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "key", "amount"],
+          "properties": { "type": { "const": "grantResource" }, "key": { "type": "string" }, "amount": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "delta"],
+          "properties": { "type": { "const": "tileProgress" }, "delta": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "battleId"],
+          "properties": { "type": { "const": "triggerBattle" }, "battleId": { "type": "string" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "amount"],
+          "properties": { "type": { "const": "climaxTnIncrease" }, "amount": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "stat", "tn"],
+          "properties": {
+            "type": { "const": "rollCheck" },
+            "stat": { "enum": ["power", "social", "skill", "intellect"] },
+            "tn": { "type": "integer" },
+            "onFailure": { "type": "array", "items": { "$ref": "#/$defs/effect" } }
+          },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type"],
+          "properties": { "type": { "const": "drawEncounter" } },
+          "additionalProperties": false }
+      ]
+    }
+  }
+}

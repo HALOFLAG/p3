@@ -1,0 +1,18 @@
+[
+  {
+    "id": "wild-hunter",
+    "name": "Wild Hunter",
+    "stats": { "power": 3, "social": 1, "skill": 4, "intellect": 2 },
+    "hpMax": 18,
+    "specialty": "Wilderness exploration +1",
+    "startingDeck": ["careful-search", "basic-attack", "persuade", "integrate-intel"]
+  },
+  {
+    "id": "city-spy",
+    "name": "City Spy",
+    "stats": { "power": 1, "social": 4, "skill": 3, "intellect": 3 },
+    "hpMax": 14,
+    "specialty": "Town negotiation TN -1",
+    "startingDeck": ["persuade", "integrate-intel", "careful-search"]
+  }
+]

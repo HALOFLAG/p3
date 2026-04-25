@@ -1,0 +1,23 @@
+<Project Sdk="Godot.NET.Sdk/4.6.2">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <RootNamespace>HauntedManor</RootNamespace>
+    <AssemblyName>HauntedManor</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="core\HauntedManor.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 排除 core/ 與 tests/ 的 .cs，避免 Godot 重複編譯（這些由各自的 csproj 處理） -->
+  <ItemGroup>
+    <Compile Remove="core\**" />
+    <Compile Remove="tests\**" />
+    <Compile Remove="oldplan_p2\**" />
+    <Compile Remove="tools\**" />
+  </ItemGroup>
+
+</Project>

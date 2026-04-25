@@ -1,0 +1,10 @@
+{
+  "id": "module-a",
+  "name": "Module A (Builtin)",
+  "version": "1.0.0",
+  "author": "test",
+  "schemaVersion": 1,
+  "description": "Builtin fixture A with difficulty",
+  "estimatedPlayTime": "30 minutes",
+  "difficulty": { "stars": 3, "label": "中級" }
+}

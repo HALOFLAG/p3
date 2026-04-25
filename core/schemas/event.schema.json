@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/event.schema.json",
+  "title": "Events (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "type", "tn", "trigger", "stat", "allowedActionTypes", "narrative", "outcomes"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "type": { "enum": ["exploration", "negotiation", "battle", "special"] },
+      "tn": { "type": "integer" },
+      "trigger": {
+        "oneOf": [
+          { "type": "object", "required": ["type", "tileId"],
+            "properties": { "type": { "const": "tileEnter" }, "tileId": { "type": "string" } },
+            "additionalProperties": false },
+          { "type": "object", "required": ["type", "key", "value"],
+            "properties": { "type": { "const": "flag" }, "key": { "type": "string" }, "value": {} },
+            "additionalProperties": false },
+          { "type": "object", "required": ["type", "interval"],
+            "properties": { "type": { "const": "turnTimer" }, "interval": { "type": "integer", "minimum": 1 } },
+            "additionalProperties": false },
+          { "type": "object", "required": ["type", "threshold"],
+            "properties": { "type": { "const": "actionCount" }, "threshold": { "type": "integer", "minimum": 1 } },
+            "additionalProperties": false }
+        ]
+      },
+      "stat": { "enum": ["power", "social", "skill", "intellect"] },
+      "allowedActionTypes": {
+        "type": "array",
+        "items": { "enum": ["communication", "combat", "exploration", "thinking"] }
+      },
+      "narrative": { "type": "string" },
+      "outcomes": {
+        "type": "object",
+        "required": ["success", "partialSuccess", "failure"],
+        "properties": {
+          "success":        { "$ref": "#/$defs/outcome" },
+          "partialSuccess": { "$ref": "#/$defs/outcome" },
+          "failure":        { "$ref": "#/$defs/outcome" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "outcome": {
+      "type": "object",
+      "required": ["narrative", "effects"],
+      "properties": {
+        "narrative": { "type": "string" },
+        "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } }
+      }
+    },
+    "effect": {
+      "oneOf": [
+        { "type": "object", "required": ["type", "key", "value"],
+          "properties": { "type": { "const": "setFlag" }, "key": { "type": "string" }, "value": {} },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "id"],
+          "properties": { "type": { "const": "grantEquipment" }, "id": { "type": "string" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "key", "amount"],
+          "properties": { "type": { "const": "grantResource" }, "key": { "type": "string" }, "amount": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "delta"],
+          "properties": { "type": { "const": "tileProgress" }, "delta": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "battleId"],
+          "properties": { "type": { "const": "triggerBattle" }, "battleId": { "type": "string" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "amount"],
+          "properties": { "type": { "const": "climaxTnIncrease" }, "amount": { "type": "integer" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "stat", "tn"],
+          "properties": {
+            "type": { "const": "rollCheck" },
+            "stat": { "enum": ["power", "social", "skill", "intellect"] },
+            "tn": { "type": "integer" },
+            "onFailure": { "type": "array", "items": { "$ref": "#/$defs/effect" } }
+          },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type"],
+          "properties": { "type": { "const": "drawEncounter" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "newTileId"],
+          "properties": {
+            "type": { "const": "transformTile" },
+            "newTileId": { "type": "string" },
+            "x": { "type": "integer" },
+            "y": { "type": "integer" },
+            "preservePlayerPosition": { "type": "boolean" }
+          },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "tags", "newTileId"],
+          "properties": {
+            "type": { "const": "transformTilesByTag" },
+            "tags": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "newTileId": { "type": "string" }
+          },
+          "additionalProperties": false }
+      ]
+    }
+  }
+}

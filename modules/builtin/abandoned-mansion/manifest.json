@@ -1,0 +1,13 @@
+{
+  "id": "abandoned-mansion",
+  "name": "廢棄洋房調查",
+  "version": "1.0.0",
+  "author": "CardNarrative 官方",
+  "schemaVersion": 1,
+  "description": "一封匿名信把你引向了荒廢已久的赫斯利洋房。暴風雨之夜，你與同伴必須在二十個大回合之內揭開這棟宅邸與它失蹤家族的真相，並活著離開。",
+  "estimatedPlayTime": "90-120 分鐘",
+  "difficulty": {
+    "stars": 3,
+    "label": "中上"
+  }
+}

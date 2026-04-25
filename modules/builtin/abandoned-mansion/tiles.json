@@ -1,0 +1,230 @@
+[
+  {
+    "id": "village-square",
+    "name": "村口廣場",
+    "terrain": "town",
+    "important": false,
+    "tags": ["village", "outdoor"],
+    "allowedActionTypes": ["communication", "thinking"],
+    "resources": [],
+    "onEnter": []
+  },
+  {
+    "id": "village-store",
+    "name": "村內雜貨店",
+    "terrain": "town",
+    "important": false,
+    "tags": ["village"],
+    "allowedActionTypes": ["communication", "thinking"],
+    "resources": [
+      { "key": "oil", "name": "燈油", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "ruined-chapel",
+    "name": "廢棄教堂",
+    "terrain": "town",
+    "important": false,
+    "tags": ["village"],
+    "allowedActionTypes": ["communication", "thinking", "exploration"],
+    "resources": [
+      { "key": "clue", "name": "線索碎片", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "forest-path",
+    "name": "森林小徑",
+    "terrain": "wilderness",
+    "important": false,
+    "tags": ["outdoor"],
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "herb", "name": "草藥", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "forest-causeway",
+    "name": "林間崎路",
+    "terrain": "wilderness",
+    "important": false,
+    "tags": ["outdoor"],
+    "copies": 2,
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "herb", "name": "草藥", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "misty-forest",
+    "name": "霧林深處",
+    "terrain": "wilderness",
+    "important": false,
+    "tags": ["outdoor"],
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "resources": [
+      { "key": "herb", "name": "草藥", "perVisit": 1 }
+    ],
+    "onEnter": [
+      { "type": "rollCheck", "stat": "skill", "tn": 9, "onFailure": [{ "type": "drawEncounter" }] }
+    ]
+  },
+  {
+    "id": "mansion-front-yard",
+    "name": "洋房前院",
+    "terrain": "wilderness",
+    "important": false,
+    "tags": ["outdoor"],
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [],
+    "onEnter": []
+  },
+  {
+    "id": "mansion-foyer",
+    "name": "洋房玄關",
+    "terrain": "dungeon",
+    "important": false,
+    "tags": ["outdoor", "indoor"],
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "resources": [],
+    "onEnter": [
+      { "type": "setFlag", "key": "mansion_entered", "value": true }
+    ]
+  },
+  {
+    "id": "mansion-parlor",
+    "name": "洋房客廳",
+    "terrain": "dungeon",
+    "important": false,
+    "tags": ["indoor"],
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "resources": [],
+    "onEnter": []
+  },
+  {
+    "id": "grand-hallway",
+    "name": "主大廳長廊",
+    "terrain": "dungeon",
+    "important": false,
+    "tags": ["indoor"],
+    "copies": 2,
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "clue", "name": "線索碎片", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "mansion-study",
+    "name": "洋房書房",
+    "terrain": "dungeon",
+    "important": true,
+    "tags": ["indoor"],
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "clue", "name": "線索碎片", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "collapsed-study",
+    "name": "崩塌書房",
+    "terrain": "dungeon",
+    "important": false,
+    "tags": ["indoor", "derelict"],
+    "allowedActionTypes": ["exploration"],
+    "resources": [
+      { "key": "scrap", "name": "廢料", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "upstairs-corridor",
+    "name": "二樓走廊",
+    "terrain": "dungeon",
+    "important": false,
+    "tags": ["indoor"],
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "resources": [],
+    "onEnter": [
+      { "type": "rollCheck", "stat": "skill", "tn": 10, "onFailure": [{ "type": "drawEncounter" }] }
+    ]
+  },
+  {
+    "id": "storage-room",
+    "name": "儲物倉庫",
+    "terrain": "dungeon",
+    "important": false,
+    "tags": ["indoor"],
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "oil", "name": "燈油", "perVisit": 1 },
+      { "key": "scrap", "name": "廢料", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "hidden-chamber",
+    "name": "符咒密室",
+    "terrain": "dungeon",
+    "important": false,
+    "tags": ["indoor", "underground"],
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "clue", "name": "線索碎片", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "basement-entry",
+    "name": "地下室入口",
+    "terrain": "dungeon",
+    "important": true,
+    "tags": ["indoor", "underground"],
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "resources": [],
+    "onEnter": []
+  },
+  {
+    "id": "underground-passage",
+    "name": "地下密道",
+    "terrain": "special",
+    "important": false,
+    "tags": ["underground"],
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "resources": [
+      { "key": "clue", "name": "線索碎片", "perVisit": 1 }
+    ],
+    "onEnter": [
+      { "type": "rollCheck", "stat": "intellect", "tn": 11, "onFailure": [{ "type": "climaxTnIncrease", "amount": 1 }] }
+    ]
+  },
+  {
+    "id": "damp-stone-stairs",
+    "name": "潮濕石階",
+    "terrain": "special",
+    "important": false,
+    "tags": ["underground"],
+    "copies": 3,
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "resources": [
+      { "key": "herb", "name": "發光地衣", "perVisit": 1 }
+    ],
+    "onEnter": []
+  },
+  {
+    "id": "ritual-hall",
+    "name": "儀式廳",
+    "terrain": "special",
+    "important": true,
+    "tags": ["underground"],
+    "allowedActionTypes": ["combat", "thinking"],
+    "resources": [],
+    "onEnter": [
+      { "type": "setFlag", "key": "at_ritual_chamber", "value": true }
+    ]
+  }
+]

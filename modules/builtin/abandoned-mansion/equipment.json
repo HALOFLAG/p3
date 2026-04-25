@@ -1,0 +1,215 @@
+[
+  {
+    "id": "rusty-revolver",
+    "name": "老舊左輪",
+    "slot": "weapon",
+    "category": "weapon",
+    "allowedSlots": ["weapon", "offHand"],
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 0 },
+    "weapon": { "hitBonus": 2, "damage": 3 },
+    "effectText": "一把在書桌抽屜深處找到的左輪，彈膛裡還有三發子彈。戰鬥命中 +2。"
+  },
+  {
+    "id": "ceremonial-dagger",
+    "name": "禮儀匕首",
+    "slot": "weapon",
+    "category": "weapon",
+    "allowedSlots": ["weapon", "offHand"],
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "weapon": { "hitBonus": 1, "damage": 2 },
+    "effectText": "刻有陌生紋路的匕首，握在手中時指尖會微微發麻。對儀式性目標格外有效。"
+  },
+  {
+    "id": "pry-bar",
+    "name": "鐵撬",
+    "slot": "weapon",
+    "category": "weapon",
+    "allowedSlots": ["weapon", "offHand"],
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 0 },
+    "weapon": { "hitBonus": 1, "damage": 3 },
+    "effectText": "既能砸碎鎖頭，也能在必要時擊退追兵。"
+  },
+  {
+    "id": "silver-candelabra",
+    "name": "銀製燭台",
+    "slot": "weapon",
+    "category": "weapon",
+    "allowedSlots": ["weapon", "offHand"],
+    "statBonuses": { "power": 0, "social": 1, "skill": 0, "intellect": 0 },
+    "weapon": { "hitBonus": 1, "damage": 2 },
+    "effectText": "沉甸甸的銀器，據說對徘徊的亡者特別有效。"
+  },
+  {
+    "id": "old-hunting-rifle",
+    "name": "破舊獵槍",
+    "slot": "weapon",
+    "category": "weapon",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 0 },
+    "weapon": { "hitBonus": 2, "damage": 4 },
+    "effectText": "保養還過得去的單管獵槍。裝填慢，但一擊足以撂倒大型目標。"
+  },
+  {
+    "id": "ritual-blade",
+    "name": "儀式長刀",
+    "slot": "weapon",
+    "category": "weapon",
+    "allowedSlots": ["weapon", "offHand"],
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "weapon": { "hitBonus": 2, "damage": 3 },
+    "effectText": "從祭壇下方取出的長刀。刀身浮現的金光會讓你想起童年時聽過的搖籃曲。"
+  },
+  {
+    "id": "heavy-overcoat",
+    "name": "厚重大衣",
+    "slot": "body",
+    "category": "armor",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 0 },
+    "effectText": "擋住風雨也擋住恐懼。提供基本的物理減傷。"
+  },
+  {
+    "id": "worn-leather-jacket",
+    "name": "舊皮外套",
+    "slot": "body",
+    "category": "armor",
+    "statBonuses": { "power": 1, "social": 0, "skill": 0, "intellect": 0 },
+    "effectText": "皮革上有幾道撕裂痕，看樣子前任主人沒能活著脫下它。"
+  },
+  {
+    "id": "kevlar-vest",
+    "name": "防彈背心",
+    "slot": "body",
+    "category": "armor",
+    "statBonuses": { "power": 1, "social": 0, "skill": 0, "intellect": 0 },
+    "effectText": "幾乎嶄新的背心。有人預料到了這趟旅程的危險。"
+  },
+  {
+    "id": "oilcloth-raincoat",
+    "name": "油布雨衣",
+    "slot": "body",
+    "category": "armor",
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "effectText": "在暴雨中不被淋透的身體，動作總是更靈活。"
+  },
+  {
+    "id": "researcher-coat",
+    "name": "研究員白袍",
+    "slot": "body",
+    "category": "armor",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 1 },
+    "effectText": "口袋裡還留著一張半乾的實驗紀錄。"
+  },
+  {
+    "id": "sturdy-boots",
+    "name": "結實長靴",
+    "slot": "feet",
+    "category": "armor",
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "effectText": "在泥濘、在破碎的地板上，腳步始終穩定。"
+  },
+  {
+    "id": "rubber-galoshes",
+    "name": "膠底雨鞋",
+    "slot": "feet",
+    "category": "armor",
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "effectText": "不易打滑，適合濕滑的走廊與下水道。"
+  },
+  {
+    "id": "runner-shoes",
+    "name": "跑鞋",
+    "slot": "feet",
+    "category": "accessory",
+    "allowedSlots": ["feet"],
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "effectText": "跑得比尖叫還快，本能地伴隨迴避反應。"
+  },
+  {
+    "id": "blessed-sandals",
+    "name": "聖油涼鞋",
+    "slot": "feet",
+    "category": "accessory",
+    "allowedSlots": ["feet"],
+    "statBonuses": { "power": 0, "social": 1, "skill": 0, "intellect": 0 },
+    "effectText": "神父留下的涼鞋，踩過聖壇後的塵土仍黏在鞋底。"
+  },
+  {
+    "id": "detective-notebook",
+    "name": "偵探筆記本",
+    "slot": "accessoryA",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 1 },
+    "effectText": "整理線索時額外浮現的關聯。思考類判定 +1。"
+  },
+  {
+    "id": "vintage-lighter",
+    "name": "復古打火機",
+    "slot": "accessoryA",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 0 },
+    "effectText": "在最黑暗的轉角裡，它的火光就是一點點的勇氣。"
+  },
+  {
+    "id": "silver-pendant",
+    "name": "銀製墜飾",
+    "slot": "accessoryA",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 1, "skill": 0, "intellect": 0 },
+    "effectText": "刻著家族徽記的墜飾。在與當地人交談時會令他們放下戒心。"
+  },
+  {
+    "id": "first-aid-kit",
+    "name": "急救包",
+    "slot": "accessoryA",
+    "category": "accessory",
+    "statBonuses": { "power": 1, "social": 0, "skill": 0, "intellect": 0 },
+    "effectText": "在劇烈的疼痛下，多堅持一拳的力氣。"
+  },
+  {
+    "id": "reporter-badge",
+    "name": "記者通行證",
+    "slot": "accessoryA",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 1, "skill": 0, "intellect": 0 },
+    "effectText": "一張隨同伴而來的舊通行證，多數村民願意再多說一句話。"
+  },
+  {
+    "id": "torn-diary",
+    "name": "破損的日記",
+    "slot": "accessoryB",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 1 },
+    "effectText": "洋房主人的日記，後半頁被撕去。閱讀時會聽見自己的牙齒在咯咯作響。"
+  },
+  {
+    "id": "holy-water-vial",
+    "name": "聖水小瓶",
+    "slot": "accessoryB",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 0 },
+    "effectText": "可在儀式關鍵時刻打破邪教節奏（對怨靈/儀式類戰鬥形成弱點）。"
+  },
+  {
+    "id": "family-amulet",
+    "name": "祖傳護符",
+    "slot": "accessoryB",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 1 },
+    "effectText": "材質不明的護符。在接近闇影時會發熱，替你爭取一瞬的清醒。"
+  },
+  {
+    "id": "forbidden-tome",
+    "name": "禁忌典籍",
+    "slot": "accessoryB",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 0, "intellect": 2 },
+    "effectText": "閱讀會付出代價的書。揭露更多真相，但每使用一次思考判定須記得停下來喘口氣。"
+  },
+  {
+    "id": "runic-compass",
+    "name": "符文羅盤",
+    "slot": "accessoryB",
+    "category": "accessory",
+    "statBonuses": { "power": 0, "social": 0, "skill": 1, "intellect": 1 },
+    "effectText": "不指向北方，而指向最接近的『異常』。進入新地塊時揭露隱藏資源。"
+  }
+]

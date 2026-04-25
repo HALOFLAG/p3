@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/action_card.schema.json",
+  "title": "Action Cards (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "type", "cost"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "type": { "enum": ["communication", "combat", "exploration", "thinking"] },
+      "cost": { "type": "integer", "minimum": 0 },
+      "tags": { "type": "array", "items": { "type": "string" } },
+      "description": { "type": "string" },
+      "usesPerTurn": { "type": "integer", "minimum": 1 },
+      "usesPerEvent": { "type": "integer", "minimum": 1 },
+      "combat": {
+        "type": "object",
+        "required": ["route"],
+        "properties": {
+          "route": { "enum": ["damageMultiplier", "rollBonus", "DamageMultiplier", "RollBonus"] },
+          "damageMultiplier": { "type": "number", "minimum": 0 },
+          "rollBonus": { "type": "integer" },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

@@ -1,0 +1,426 @@
+[
+  {
+    "id": "village-inquiry",
+    "name": "村口盤問",
+    "type": "negotiation",
+    "tn": 9,
+    "trigger": { "type": "tileEnter", "tileId": "village-square" },
+    "stat": "social",
+    "allowedActionTypes": ["communication", "thinking"],
+    "narrative": "你們剛到村口，幾名村民便遠遠地圍了過來。一位腰際掛著獵刀的老人皺著眉打量你：『赫斯利家的事，外人不要多問。』他的嗓音裡既有警告，也有壓抑的恐懼——顯然他們比任何人都更明白那棟洋房裡的不對勁。",
+    "outcomes": {
+      "success": {
+        "narrative": "你耐心地陳述來意、出示匿名信的影本。老人沉默半晌，低聲說：『赫斯利家的小女兒還沒找到。你們若真要去，就繞過前門，走側廊的酒窖——那是僕人當年最後躲藏的地方。』",
+        "effects": [
+          { "type": "setFlag", "key": "village_trust", "value": true },
+          { "type": "grantResource", "key": "clue", "amount": 1 },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "村民冷冷地別過頭。一名年輕女孩卻在離開人群時拉住你的衣角：『若真要去……別在午夜前進屋。』她塞給你一截用油紙包著的蠟燭頭，便匆匆離去。",
+        "effects": [
+          { "type": "grantResource", "key": "oil", "amount": 1 }
+        ]
+      },
+      "failure": {
+        "narrative": "你開口的語氣顯然惹怒了對方。老人拄著獵刀退了兩步：『赫斯利家的事，你自己承擔。從今夜起，村子不再給你水、不再給你火。』人群散去，只剩冷雨敲打屋簷。",
+        "effects": [
+          { "type": "setFlag", "key": "village_hostile", "value": true },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "chapel-investigation",
+    "name": "廢棄教堂的祭壇",
+    "type": "exploration",
+    "tn": 9,
+    "trigger": { "type": "tileEnter", "tileId": "ruined-chapel" },
+    "stat": "intellect",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "narrative": "教堂的長椅早已歪斜，祭壇後方的牆上殘留著被反覆塗改的壁畫：先是聖人，再是野獸，最後是一圈你不認得的幾何符號。祭壇上壓著一本封皮龜裂的日誌，紙頁被潮氣黏在一起。",
+    "outcomes": {
+      "success": {
+        "narrative": "你小心翼翼地翻開日誌，一位老神父的字跡層層疊疊：『……赫斯利家從未真正離開。他們只是走得更深。地下的聲音再也蓋不住了。』書頁最末夾著一小瓶貼有十字標的玻璃瓶。",
+        "effects": [
+          { "type": "setFlag", "key": "priest_diary_read", "value": true },
+          { "type": "grantEquipment", "id": "holy-water-vial" },
+          { "type": "grantResource", "key": "clue", "amount": 1 },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "潮濕的紙頁在你指下碎成小片。你只勉強讀到『地下的聲音』與『再也蓋不住了』這兩句。其他的字跡隨著冷風揚起，消失在祭壇四周。",
+        "effects": [
+          { "type": "grantResource", "key": "clue", "amount": 1 }
+        ]
+      },
+      "failure": {
+        "narrative": "你粗率地翻動日誌，整本書突然碎裂如灰。灰燼落地的一瞬，你清楚地聽見祭壇底下傳來一聲細微的——回應。",
+        "effects": [
+          { "type": "setFlag", "key": "altar_disturbed", "value": true },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "mansion-entrance",
+    "name": "洋房的入口",
+    "type": "exploration",
+    "tn": 10,
+    "trigger": { "type": "tileEnter", "tileId": "mansion-front-yard" },
+    "stat": "power",
+    "allowedActionTypes": ["combat", "exploration", "thinking"],
+    "narrative": "『轟隆隆隆！』隨著雷聲的響起，出現在你們眼前的是一間巨大的洋房。你嘗試打開眼前巨大的玄關大門時，卻打不開——這扇門被什麼東西從內側壓著。你們必須想辦法進到裡面，不管用什麼方法。",
+    "outcomes": {
+      "success": {
+        "narrative": "你找到側邊一扇半掩的僕人出入口，用鐵撬翹開了鏽住的鎖。門內傳出陳年木頭與潮氣混合的氣味——以及，更遠處，像是有人小聲啜泣的聲音。",
+        "effects": [
+          { "type": "setFlag", "key": "side_entry_opened", "value": true },
+          { "type": "grantEquipment", "id": "pry-bar" },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你用肩膀撞開了玄關，但整扇門在你們身後『砰』地闔上，門閂自己滑回原位。回頭看時，門縫下已沒有雨水滲入。",
+        "effects": [
+          { "type": "setFlag", "key": "door_sealed_behind", "value": true }
+        ]
+      },
+      "failure": {
+        "narrative": "你用力過猛，木門整片砸下，灰塵與碎木花暴揚而起。遠處不知被什麼東西壓著的地板，傳出一聲長長的呻吟。",
+        "effects": [
+          { "type": "triggerBattle", "battleId": "trespasser" },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "foyer-portrait",
+    "name": "門廳的家族肖像",
+    "type": "exploration",
+    "tn": 10,
+    "trigger": { "type": "tileEnter", "tileId": "mansion-foyer" },
+    "stat": "intellect",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "narrative": "門廳牆上掛著一幅覆滿灰塵的家族肖像：赫斯利夫婦、兩個男孩、還有一個——被人用刀反覆劃去的女孩。畫框背面，有人用細小的字跡寫下一串日期，最末一行僅有四個字：『她還活著。』",
+    "outcomes": {
+      "success": {
+        "narrative": "你將日期與教堂日誌上的紀錄對照，赫斯利家那位『被劃去』的小女兒——在所有官方紀錄中都不存在。她的存在像是被整個家族親手抹除。",
+        "effects": [
+          { "type": "setFlag", "key": "lost_daughter_known", "value": true },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你在畫框角落摸出一張折疊極小的紙片，寫著一個你讀不懂的單字，與一個向下指的箭頭。",
+        "effects": [
+          { "type": "grantResource", "key": "clue", "amount": 1 }
+        ]
+      },
+      "failure": {
+        "narrative": "你移動畫框時，整幅畫突然從牆上墜下，砸出巨大聲響。二樓的腳步聲開始接近。",
+        "effects": [
+          { "type": "setFlag", "key": "alerted_upstairs", "value": true },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "corner-of-corridor",
+    "name": "走廊的轉角",
+    "type": "exploration",
+    "tn": 11,
+    "trigger": { "type": "tileEnter", "tileId": "upstairs-corridor" },
+    "stat": "skill",
+    "allowedActionTypes": ["exploration", "thinking", "combat"],
+    "narrative": "在黑暗的走廊中，只有腳步聲和遠處的雷聲……你們走著走著，走到了走廊的轉角處。有種非常不妙的感覺。突然，閃電的光芒照亮了轉角，轉角出現了一道影子！",
+    "outcomes": {
+      "success": {
+        "narrative": "你及時貼牆收勢。那只是一件從衣架上滑落的舊雨衣，以及一張小小的、掉在地板上的銀製墜飾。你捏著它，墜飾還殘留著些許體溫。",
+        "effects": [
+          { "type": "grantEquipment", "id": "silver-pendant" },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你閃得夠快，但那道影子確實在轉角的另一端存在過。地板上，一串濕漉漉的腳印蜿蜒著延伸向書房方向。",
+        "effects": [
+          { "type": "setFlag", "key": "wet-footprints", "value": true }
+        ]
+      },
+      "failure": {
+        "narrative": "那道影子在你眨眼之間貼了上來。冰冷的指尖掐住你的頸子，而你只能看見它空洞的眼眶。",
+        "effects": [
+          { "type": "triggerBattle", "battleId": "mirror-shadow" }
+        ]
+      }
+    }
+  },
+  {
+    "id": "storm-investigation",
+    "name": "暴風雨中的調查",
+    "type": "exploration",
+    "tn": 11,
+    "trigger": { "type": "tileEnter", "tileId": "mansion-study" },
+    "stat": "intellect",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "narrative": "隨著暴風雨的到來，你無法離開這黑暗的房間。房間中唯一的光源是書桌角落的一盞油燈，以及一本攤開的日誌。『調查進行的還順利嗎？』你彷彿聽見赫斯利先生最後的低語在雨聲之間浮現。你必須集中精神，無視大雨的聲響及屋外的腳步聲。",
+    "outcomes": {
+      "success": {
+        "narrative": "你將日誌、家族肖像背面的日期、教堂日誌三者並置——真相逐漸明朗：赫斯利家族為延續家業而向『地下』獻祭了長女。多年後她並未死去，而是成為了那東西的一部分。書桌底下還有一把尚未上膛的獵槍。",
+        "effects": [
+          { "type": "setFlag", "key": "library_searched", "value": true },
+          { "type": "grantEquipment", "id": "old-hunting-rifle" },
+          { "type": "grantResource", "key": "clue", "amount": 2 },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你讀完了一半的日誌——名字、日期、一張潦草的地下室草圖。另一半紙頁被血漬浸濕，無法辨認。",
+        "effects": [
+          { "type": "setFlag", "key": "library_searched", "value": true },
+          { "type": "grantResource", "key": "clue", "amount": 1 }
+        ]
+      },
+      "failure": {
+        "narrative": "雷電將油燈震熄。當你再度點亮它，書桌上所有紙頁都已消失。你的手心還殘留著墨水的痕跡，彷彿剛剛才寫下些什麼，卻記不得寫了什麼。",
+        "effects": [
+          { "type": "setFlag", "key": "memory-blurred", "value": true },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "unexpected-visitor",
+    "name": "不請自來的客人",
+    "type": "special",
+    "tn": 11,
+    "trigger": { "type": "tileEnter", "tileId": "mansion-parlor" },
+    "stat": "social",
+    "allowedActionTypes": ["communication", "thinking"],
+    "narrative": "『叩叩叩！』『叩叩叩！』客廳的木門被激烈的敲響。看起來門外的人非常的緊急，但是，也許門外的不是人，而是屬於那東西的一部份？開門或不開門，都可能是錯誤的選擇……",
+    "outcomes": {
+      "success": {
+        "narrative": "你從貓眼望出去——門外站著一個渾身濕透、年約十歲的小女孩。她抬頭直視你：『姊姊讓我帶你們走。』她拉開斗篷，露出同樣銀色的家族墜飾。這是赫斯利家真正『還活著』的那個孩子，也是你們的倖存者線索。",
+        "effects": [
+          { "type": "setFlag", "key": "contact_with_survivor", "value": true },
+          { "type": "grantResource", "key": "clue", "amount": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你稍稍打開門縫。門外只剩一串濕腳印，延伸向客廳地毯下的暗門。",
+        "effects": [
+          { "type": "setFlag", "key": "trapdoor_revealed", "value": true }
+        ]
+      },
+      "failure": {
+        "narrative": "你拉開了門，對方卻笑得不像人類。你迅速關上門，但一隻蒼白的手指已經卡進了門縫。",
+        "effects": [
+          { "type": "triggerBattle", "battleId": "trespasser" },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "empty-room",
+    "name": "空無一人的倉庫",
+    "type": "exploration",
+    "tn": 10,
+    "trigger": { "type": "tileEnter", "tileId": "storage-room" },
+    "stat": "skill",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "narrative": "倉庫裡擺滿了赫斯利家多年以來的雜物：斷裂的家具、生鏽的農具、一疊被雨淋過的舊書。一排木箱整齊地倚著牆，卻有一個箱子的鎖是新換的。",
+    "outcomes": {
+      "success": {
+        "narrative": "你輕巧地撬開新鎖。箱內疊著一件尚未氧化的防彈背心、一只老舊的家族徽章，以及一卷用蠟封著的繩結手稿——顯然有人預料到了今晚會需要它們。",
+        "effects": [
+          { "type": "grantEquipment", "id": "kevlar-vest" },
+          { "type": "grantEquipment", "id": "family-amulet" },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你翻遍了箱內的物品，只找到一件還能穿的舊皮外套。其他的紙張一碰即碎，資訊所剩無幾。",
+        "effects": [
+          { "type": "grantEquipment", "id": "worn-leather-jacket" }
+        ]
+      },
+      "failure": {
+        "narrative": "你弄翻了整排的木箱。灰塵中，有什麼小小的東西迅速地從箱子之間爬過，消失在牆角。",
+        "effects": [
+          { "type": "setFlag", "key": "something-disturbed", "value": true },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "sealed-door",
+    "name": "充滿符咒的拉門",
+    "type": "exploration",
+    "tn": 12,
+    "trigger": { "type": "tileEnter", "tileId": "basement-entry" },
+    "stat": "intellect",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "narrative": "你們必須經過一扇古老的拉門。門似乎很容易打開，但情況沒那麼簡單，門上貼滿了寫著咒文的符咒——它們的筆觸不屬於這個村落，也不屬於任何你熟悉的系統。你認為這扇門被詛咒了，但下去的道路只有這一條。",
+    "outcomes": {
+      "success": {
+        "narrative": "你辨識出符咒中混入的兩種系統：一層是封印，另一層卻是『標記』——顯然是有人希望門內的東西能夠被找到。你依順序撕下符咒，拉門無聲地滑開。",
+        "effects": [
+          { "type": "setFlag", "key": "seal_broken_correctly", "value": true },
+          { "type": "grantResource", "key": "clue", "amount": 1 },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你扯下了能辨識的符咒，剩下的仍留在門上。門開了一半，門縫裡吹來一股帶著鐵鏽味的寒風。",
+        "effects": [
+          { "type": "setFlag", "key": "seal_broken_partial", "value": true }
+        ]
+      },
+      "failure": {
+        "narrative": "你粗暴地撕下所有符咒。拉門猛地向後滑開，同時，從下方傳來一陣細碎的腳步聲——有東西原本被封在裡面。",
+        "effects": [
+          { "type": "triggerBattle", "battleId": "wandering-dead" },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "wandering-dead-encounter",
+    "name": "徘徊的亡者",
+    "type": "battle",
+    "tn": 14,
+    "trigger": { "type": "tileEnter", "tileId": "underground-passage" },
+    "stat": "power",
+    "allowedActionTypes": ["combat", "thinking"],
+    "narrative": "即使死了卻無法真正死去的亡者在此區域不斷徘徊著。他們對生者仍懷著不明來由的憎恨，正緩慢卻堅決地往你們逼近——為了前進，你們必須擊倒他們。",
+    "outcomes": {
+      "success": {
+        "narrative": "你們俐落地擊破了三具枯槁的身軀。他們倒下的那一刻，臉上露出的不是痛苦，而是一種像是被釋放的、平靜的神情。",
+        "effects": [
+          { "type": "setFlag", "key": "dead_laid_to_rest", "value": true },
+          { "type": "grantResource", "key": "clue", "amount": 1 },
+          { "type": "tileProgress", "delta": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你們撂倒了兩具，第三具倉皇竄入地縫深處。它臨走前拋下了一件沾著地下室灰塵的皮革。",
+        "effects": [
+          { "type": "grantEquipment", "id": "worn-leather-jacket" }
+        ]
+      },
+      "failure": {
+        "narrative": "亡者纏住你的腳踝不放，你必須親手處理他們。",
+        "effects": [
+          { "type": "triggerBattle", "battleId": "wandering-dead" },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      }
+    }
+  },
+  {
+    "id": "erosion",
+    "name": "侵蝕",
+    "type": "special",
+    "tn": 14,
+    "trigger": { "type": "flag", "key": "at_ritual_chamber", "value": true },
+    "stat": "intellect",
+    "allowedActionTypes": ["thinking", "communication"],
+    "narrative": "儀式廳中央的祭壇還亮著餘燼。你感覺有什麼黑色的東西從腳下浮起、滲入血液。身體開始浮現神秘的文字，眼神散發著紅光，你的視線越來越模糊。如果你被黑暗完全吞噬掉，你就再也不是人類了。別認輸了！聽到同伴的呼喚了嗎？快點回來吧！",
+    "outcomes": {
+      "success": {
+        "narrative": "你咬破嘴唇，用同伴的名字把自己拉回現實。紋路在皮膚上退去，只留下淺淺的灼痕。你清晰地聽見祭壇下方那東西的『節拍』——那是人類心跳的逆向——現在，你知道如何切斷它。",
+        "effects": [
+          { "type": "setFlag", "key": "erosion_resisted", "value": true },
+          { "type": "grantResource", "key": "clue", "amount": 1 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你勉強穩住了意識，但紋路並未完全褪去。你能感到它還在皮膚之下，低聲地重複著同一個字。",
+        "effects": [
+          { "type": "setFlag", "key": "erosion_resisted", "value": true },
+          { "type": "climaxTnIncrease", "amount": 1 }
+        ]
+      },
+      "failure": {
+        "narrative": "你沒能抵抗。祭壇下的心跳變成了你的心跳。同伴的呼喊離你愈來愈遠——儀式即將完成。",
+        "effects": [
+          { "type": "setFlag", "key": "cult_ritual_complete", "value": true }
+        ]
+      }
+    }
+  },
+  {
+    "id": "ritual-finale",
+    "name": "其名不可言者",
+    "type": "battle",
+    "tn": 16,
+    "trigger": { "type": "flag", "key": "erosion_resisted", "value": true },
+    "stat": "power",
+    "allowedActionTypes": ["combat", "thinking", "communication"],
+    "narrative": "祭壇的石板自中央裂開，無數蠕動的觸手從地縫湧出——你終於看見了那東西的『身軀』。赫斯利家的倖存者小女孩被困在祭壇另一端，而你們必須在儀式完成之前，同時擊倒它、救出她、並從洋房中撤離。",
+    "outcomes": {
+      "success": {
+        "narrative": "你以聖水、以銀燭台、以儀式長刀同時擊中觸手核心。那東西哀號著退回石縫之下，祭壇的節拍在你的耳邊碎裂。你抱起顫抖的小女孩，朝洋房的後門衝去——雨聲在身後，像是有什麼正把它留下的痕跡，一寸一寸地抹去。",
+        "effects": [
+          { "type": "setFlag", "key": "mansion_truth_revealed", "value": true },
+          { "type": "setFlag", "key": "survivor_rescued", "value": true },
+          { "type": "setFlag", "key": "escaped_mansion", "value": true }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你們重傷了它，但它仍未倒下。這一戰必須親手結束。",
+        "effects": [
+          { "type": "triggerBattle", "battleId": "unnameable-one" }
+        ]
+      },
+      "failure": {
+        "narrative": "節拍變快了。你聽見自己的心跳和它同步、再同步——儀式宣告完成。",
+        "effects": [
+          { "type": "setFlag", "key": "cult_ritual_complete", "value": true }
+        ]
+      }
+    }
+  },
+  {
+    "id": "study-collapse",
+    "name": "屋頂崩塌",
+    "type": "exploration",
+    "tn": 10,
+    "trigger": { "type": "tileEnter", "tileId": "mansion-study" },
+    "stat": "skill",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "narrative": "書房天花板傳來令人毛骨悚然的嘎吱聲，大塊的灰泥從主梁剝落。若不盡快退離，整個空間很可能在下一刻塌陷。",
+    "outcomes": {
+      "success": {
+        "narrative": "你敏捷地閃過主梁下墜的碎片，並在牆角發現一疊尚未毀損的信件。",
+        "effects": [
+          { "type": "grantResource", "key": "clue", "amount": 2 }
+        ]
+      },
+      "partialSuccess": {
+        "narrative": "你僅能搶出一本筆記，塵埃覆蓋你的肩頭。書房的一角開始崩裂，但主體結構還撐得住。",
+        "effects": [
+          { "type": "grantResource", "key": "clue", "amount": 1 }
+        ]
+      },
+      "failure": {
+        "narrative": "主梁終於斷裂——整座書房陷入瓦礫與塵埃之中。這裡再也不是原來的書房了。",
+        "effects": [
+          { "type": "grantResource", "key": "wound", "amount": 1 },
+          { "type": "transformTile", "newTileId": "collapsed-study" }
+        ]
+      }
+    }
+  }
+]

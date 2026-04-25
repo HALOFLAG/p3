@@ -1,0 +1,9 @@
+{
+  "id": "module-b",
+  "name": "Module B (Builtin)",
+  "version": "1.0.0",
+  "author": "test",
+  "schemaVersion": 1,
+  "description": "Builtin fixture B without difficulty",
+  "estimatedPlayTime": "45 minutes"
+}

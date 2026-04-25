@@ -1,0 +1,10 @@
+{
+  "id": "module-a",
+  "name": "Module A (User Override)",
+  "version": "2.0.0",
+  "author": "user",
+  "schemaVersion": 1,
+  "description": "User override of module-a",
+  "estimatedPlayTime": "30 minutes",
+  "difficulty": { "stars": 4, "label": "困難" }
+}

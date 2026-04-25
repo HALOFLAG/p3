@@ -1,0 +1,77 @@
+[
+  {
+    "id": "old-priest",
+    "name": "村裡的老神父 多米尼",
+    "stats": { "power": 1, "social": 3, "skill": 1, "intellect": 3 },
+    "hp": 12,
+    "actionPoints": 2,
+    "specialty": "每大回合開始時為最低 HP 的同伴恢復 2 HP；對戰鬥類事件提供 +1 判定。",
+    "specialtyEffects": [
+      {
+        "trigger": "BigRoundStart",
+        "effect": { "type": "healLowestHp", "amount": 2 }
+      },
+      {
+        "trigger": "OnEventStart",
+        "condition": { "eventTypeAny": ["Battle"] },
+        "effect": { "type": "bonusRoll", "amount": 1, "duration": "ThisEvent" }
+      }
+    ],
+    "strategyTable": [
+      { "scene": "exploration", "preferredActionTags": ["lore", "analysis", "perception"] },
+      { "scene": "negotiation", "preferredActionTags": ["persuade", "support", "ritual"] },
+      { "scene": "battle",      "preferredActionTags": ["ward", "heal", "support"] },
+      { "scene": "default",     "preferredActionTags": ["support", "heal"] }
+    ]
+  },
+  {
+    "id": "journalist",
+    "name": "同行記者 蒂娜",
+    "stats": { "power": 2, "social": 3, "skill": 2, "intellect": 2 },
+    "hp": 14,
+    "actionPoints": 2,
+    "specialty": "進入重要地塊時給予 1 線索碎片；對探索類事件提供 +1 判定。",
+    "specialtyEffects": [
+      {
+        "trigger": "OnEnterTile",
+        "condition": { "tileImportant": true },
+        "effect": { "type": "grantResource", "key": "clue_shard", "amount": 1 }
+      },
+      {
+        "trigger": "OnEventStart",
+        "condition": { "eventTypeAny": ["Exploration"] },
+        "effect": { "type": "bonusRoll", "amount": 1, "duration": "ThisEvent" }
+      }
+    ],
+    "strategyTable": [
+      { "scene": "exploration", "preferredActionTags": ["search", "perception", "analysis"] },
+      { "scene": "negotiation", "preferredActionTags": ["persuade", "analysis"] },
+      { "scene": "battle",      "preferredActionTags": ["dodge", "defend", "support"] },
+      { "scene": "default",     "preferredActionTags": ["search", "analysis"] }
+    ]
+  },
+  {
+    "id": "hired-bodyguard",
+    "name": "受雇保鏢 葛雷格",
+    "stats": { "power": 3, "social": 1, "skill": 3, "intellect": 1 },
+    "hp": 18,
+    "actionPoints": 2,
+    "specialty": "戰鬥開始時擲骰 +1、並讓最低 HP 隊員恢復 2 HP。",
+    "specialtyEffects": [
+      {
+        "trigger": "OnBattleStart",
+        "effect": { "type": "bonusRoll", "amount": 1, "duration": "ThisBattle" }
+      },
+      {
+        "trigger": "OnBattleStart",
+        "effect": { "type": "healLowestHp", "amount": 2 }
+      }
+    ],
+    "strategyTable": [
+      { "scene": "exploration", "preferredActionTags": ["attack", "search"] },
+      { "scene": "negotiation", "preferredActionTags": ["intimidate"] },
+      { "scene": "battle",      "preferredActionTags": ["attack", "defend", "support"] },
+      { "scene": "default",     "preferredActionTags": ["attack", "defend"] }
+    ]
+  }
+]

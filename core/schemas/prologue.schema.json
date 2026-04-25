@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/prologue.schema.json",
+  "title": "Prologue Card",
+  "type": "object",
+  "required": [
+    "moduleName", "difficulty", "openingNarrative",
+    "winConditions", "loseConditions", "difficultyCurve",
+    "startingTileId", "importantTileIds",
+    "characterUpgradeThreshold", "scoreFormula"
+  ],
+  "properties": {
+    "moduleName": { "type": "string" },
+    "difficulty": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "openingNarrative": { "type": "string" },
+    "winConditions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "object", "required": ["type", "key", "value"],
+            "properties": {
+              "type": { "const": "flag" },
+              "key": { "type": "string" },
+              "value": {}
+            },
+            "additionalProperties": false }
+        ]
+      }
+    },
+    "loseConditions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "object", "required": ["type", "value"],
+            "properties": {
+              "type": { "const": "turnLimit" },
+              "value": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false },
+          { "type": "object", "required": ["type"],
+            "properties": { "type": { "const": "allPlayersDown" } },
+            "additionalProperties": false }
+        ]
+      }
+    },
+    "difficultyCurve": {
+      "type": "object",
+      "required": ["early", "middle", "climax"],
+      "properties": {
+        "early":  { "$ref": "#/$defs/difficultyRange" },
+        "middle": { "$ref": "#/$defs/difficultyRange" },
+        "climax": {
+          "type": "object",
+          "required": ["baseTn", "perFailureTnIncrease", "tnCap"],
+          "properties": {
+            "baseTn": { "type": "integer" },
+            "perFailureTnIncrease": { "type": "integer" },
+            "tnCap": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "startingTileId": { "type": "string" },
+    "importantTileIds": { "type": "array", "items": { "type": "string" } },
+    "characterUpgradeThreshold": { "type": "integer", "minimum": 1 },
+    "scoreFormula": { "type": "string" },
+    "winConditionLabels": {
+      "description": "S1 開場序幕 overlay 顯示用：將 winCondition.key 映射到中文標籤。",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "loseConditionLabels": {
+      "description": "S1 開場序幕 overlay 顯示用：將 loseCondition type（turnLimit / allPlayersDown）映射到中文標籤。",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "difficultyRange": {
+      "type": "object",
+      "required": ["tnRange"],
+      "properties": {
+        "tnRange": {
+          "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2
+        },
+        "untilTurn": { "type": "integer" }
+      }
+    }
+  }
+}

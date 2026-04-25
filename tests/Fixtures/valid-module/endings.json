@@ -1,0 +1,6 @@
+[
+  { "id": "ending-s", "grade": "S", "threshold": 12, "narrative": "Legendary ending." },
+  { "id": "ending-a", "grade": "A", "threshold": 8,  "narrative": "Great ending." },
+  { "id": "ending-b", "grade": "B", "threshold": 4,  "narrative": "Solid ending." },
+  { "id": "ending-c", "grade": "C", "threshold": 0,  "narrative": "Ordinary ending." }
+]

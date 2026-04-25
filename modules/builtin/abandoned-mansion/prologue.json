@@ -1,0 +1,32 @@
+{
+  "moduleName": "廢棄洋房調查",
+  "difficulty": 3,
+  "openingNarrative": "一封沒有署名的信將你們引向荒廢多年的『赫斯利洋房』。信紙邊緣沾著乾涸的泥與暗紅痕跡，末行只寫著一句：『如果你們還相信真相，就在暴風雨封路前抵達。』村裡的老人一聽到洋房二字便垂下眼神，村口石階上那隻被釘在門柱的黑色木鴉，顯然不是歡迎的記號。三十個大回合後，進山的道路將被暴風雨徹底切斷 —— 你們必須在那之前查明一切。",
+  "winConditions": [
+    { "type": "flag", "key": "mansion_truth_revealed", "value": true },
+    { "type": "flag", "key": "survivor_rescued", "value": true },
+    { "type": "flag", "key": "escaped_mansion", "value": true }
+  ],
+  "winConditionLabels": {
+    "mansion_truth_revealed": "揭開赫斯利洋房的真相",
+    "survivor_rescued": "救出被困的倖存者",
+    "escaped_mansion": "在暴風雨封路前活著離開"
+  },
+  "loseConditions": [
+    { "type": "turnLimit", "value": 30 },
+    { "type": "allPlayersDown" }
+  ],
+  "loseConditionLabels": {
+    "turnLimit": "30 個大回合內未達成勝利條件",
+    "allPlayersDown": "全體隊員倒下"
+  },
+  "difficultyCurve": {
+    "early":  { "tnRange": [8, 10],  "untilTurn": 7 },
+    "middle": { "tnRange": [10, 12], "untilTurn": 14 },
+    "climax": { "baseTn": 14, "perFailureTnIncrease": 1, "tnCap": 18 }
+  },
+  "startingTileId": "village-square",
+  "importantTileIds": ["mansion-study", "basement-entry", "ritual-hall"],
+  "characterUpgradeThreshold": 3,
+  "scoreFormula": "contributions * 2 + equipmentSlotsFilled"
+}

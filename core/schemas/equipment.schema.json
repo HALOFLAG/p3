@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/equipment.schema.json",
+  "title": "Equipment (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "name", "slot"],
+    "properties": {
+      "id": { "type": "string" },
+      "name": { "type": "string" },
+      "slot": { "enum": ["weapon", "offHand", "head", "body", "hand", "feet", "accessoryA", "accessoryB", "utility", "character"] },
+      "category": { "enum": ["weapon", "armor", "accessory", "special"] },
+      "allowedSlots": {
+        "type": "array",
+        "items": { "enum": ["weapon", "offHand", "head", "body", "hand", "feet", "accessoryA", "accessoryB", "utility", "character"] },
+        "description": "Empty/omitted defaults to [slot]. For dual-purpose items (e.g. off-hand weapon or shield)."
+      },
+      "statBonuses": {
+        "type": "object",
+        "properties": {
+          "power": { "type": "integer" },
+          "social": { "type": "integer" },
+          "skill": { "type": "integer" },
+          "intellect": { "type": "integer" }
+        },
+        "required": ["power", "social", "skill", "intellect"]
+      },
+      "weapon": {
+        "type": "object",
+        "properties": {
+          "hitBonus": { "type": "integer" },
+          "damage": { "type": "integer" }
+        },
+        "required": ["hitBonus", "damage"],
+        "description": "Present only for weapon-category items. Used in battle hit/damage calculation."
+      },
+      "effectText": { "type": "string" }
+    }
+  }
+}

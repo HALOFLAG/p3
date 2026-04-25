@@ -1,0 +1,21 @@
+{
+  "moduleName": "Test Valid",
+  "difficulty": 2,
+  "openingNarrative": "The caravan is missing.",
+  "winConditions": [
+    { "type": "flag", "key": "caravan_found", "value": true }
+  ],
+  "loseConditions": [
+    { "type": "turnLimit", "value": 30 },
+    { "type": "allPlayersDown" }
+  ],
+  "difficultyCurve": {
+    "early":  { "tnRange": [8, 10],  "untilTurn": 7 },
+    "middle": { "tnRange": [10, 12], "untilTurn": 14 },
+    "climax": { "baseTn": 14, "perFailureTnIncrease": 1, "tnCap": 18 }
+  },
+  "startingTileId": "town-square",
+  "importantTileIds": ["warehouse"],
+  "characterUpgradeThreshold": 5,
+  "scoreFormula": "contributions * 2"
+}

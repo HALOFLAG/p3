@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cardnarrative/schemas/ending.schema.json",
+  "title": "Endings (array)",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "grade", "threshold", "narrative"],
+    "properties": {
+      "id": { "type": "string" },
+      "grade": { "enum": ["S", "A", "B", "C"] },
+      "threshold": { "type": "integer" },
+      "narrative": { "type": "string" }
+    }
+  }
+}

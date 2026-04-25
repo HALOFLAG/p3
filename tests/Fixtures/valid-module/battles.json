@@ -1,0 +1,38 @@
+[
+  {
+    "id": "warehouse-guard",
+    "name": "Warehouse Guard",
+    "description": "A broad-shouldered man in leather armor.",
+    "stats": {
+      "hpMax": 20,
+      "attackPower": 4,
+      "evasion": 8,
+      "defense": 2,
+      "weakness": null
+    },
+    "encounterTn": 9,
+    "enemyActions": [
+      {
+        "id": "guard-flee",
+        "name": "Retreat",
+        "kind": "flee",
+        "targeting": "lowestHp",
+        "weight": 1,
+        "trigger": { "type": "hpAtMost", "ratio": 0.5 },
+        "payload": { "damage": 0, "statusTag": null, "narrative": null }
+      },
+      {
+        "id": "guard-swing",
+        "name": "Guard Swing",
+        "kind": "attack",
+        "targeting": "lowestHp",
+        "weight": 3,
+        "trigger": { "type": "always" },
+        "payload": { "damage": 0, "statusTag": null, "narrative": null }
+      }
+    ],
+    "lootEffects": [
+      { "type": "grantResource", "key": "clue", "amount": 1 }
+    ]
+  }
+]

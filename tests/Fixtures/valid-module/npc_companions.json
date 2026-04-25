@@ -1,0 +1,16 @@
+[
+  {
+    "id": "companion-thief",
+    "name": "Night Walker Leia",
+    "stats": { "power": 1, "social": 3, "skill": 4, "intellect": 2 },
+    "hp": 12,
+    "specialty": "Town: communication check +1",
+    "actionPoints": 2,
+    "strategyTable": [
+      { "scene": "exploration",  "preferredActionTags": ["search", "perception"] },
+      { "scene": "negotiation",  "preferredActionTags": ["persuade"] },
+      { "scene": "battle",       "preferredActionTags": ["dodge", "support"] },
+      { "scene": "default",      "preferredActionTags": ["thinking"] }
+    ]
+  }
+]
