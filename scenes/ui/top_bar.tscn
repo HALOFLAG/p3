@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://b63iml8ijxemi"]
+
+[ext_resource type="Script" path="res://scripts/Ui/TopBar.cs" id="1_script"]
+
+[node name="TopBar" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 60)
+script = ExtResource("1_script")

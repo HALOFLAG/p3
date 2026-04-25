@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://ekg57xc8abl1"]
+
+[ext_resource type="Script" path="res://scripts/Ui/HandDock.cs" id="1_script"]
+
+[node name="HandDock" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 120)
+script = ExtResource("1_script")

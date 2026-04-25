@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://b63iebx1yf1mi"]
+
+[ext_resource type="Script" path="res://scripts/Ui/LeftPanel.cs" id="1_script"]
+
+[node name="LeftPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(368, 0)
+script = ExtResource("1_script")

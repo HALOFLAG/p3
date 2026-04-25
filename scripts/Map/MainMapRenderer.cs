@@ -6,18 +6,14 @@ using Godot;
 using Projection = CardNarrative.Core.Map.Projection;
 using ProjectionParams = CardNarrative.Core.Map.ProjectionParams;
 using HauntedManor.Scripts.Ui;
+using HauntedManor.Scripts.Theme;
 
 namespace HauntedManor.Scripts.Map;
 
 /// <summary>
 /// Phase 1 Task 2/4/5/6 — 9×9 主地圖渲染器（規格書 §2.1 / §5.1）。
-/// 持有 WorldMap、生成 81 個 TileVisual、處理：
-///   - 投影渲染（已放置/未放置/合法區/移動目標 overlay）
-///   - 玩家行動觸發器 popup（點玩家格 → 4 行動）
-///   - MapExpand 模式（持地塊放合法區）
-///   - 移動模式（選相鄰格 → 確認對話框）
-///   - 觀察判定（2d6 + Skill vs TN 10）
-///   - HUD 文字更新與 TURN LOG
+/// UI v2 重構：HUD 拆出 → 對外發 Signal 給 TopBar / RightPanel 訂閱。
+/// 自身只負責：投影渲染、popup、確認對話框、tile 點擊。
 /// </summary>
 public partial class MainMapRenderer : Control
 {
@@ -28,46 +24,52 @@ public partial class MainMapRenderer : Control
     private Node2D? _tileLayer;
     private ProjectionParams _projection;
 
-    // HUD
-    private Label? _deckLabel;
-    private Label? _heldLabel;
-    private Label? _nextPreviewLabel;
-    private Label? _modeLabel;
-    private Label? _hpLabel;
-    private Label? _turnLog;
-
     // Popup / dialog
     private ActionTriggerPopup? _popup;
     private ConfirmationDialog? _moveConfirm;
-
-    // Movement intent (set when player clicks a target in Move mode)
     private (int Row, int Col)? _pendingMoveTarget;
 
-    // Demo Skill 屬性（規格書 §3.3 觀察用 = 綠探索；本 demo 暫定 = 3）
+    // Demo Skill 屬性（規格書 §3.3 觀察用 = 綠探索）
     private const int DemoSkill = 3;
     private const int ObserveTn = 10;
     private readonly IDiceService _dice = new SeededDiceService(seed: Random.Shared.Next());
 
     public WorldMap WorldMap => _worldMap;
 
+    // === 對外 Signals（取代內嵌 HUD）===
+
+    /// <summary>牌堆狀態變更：發送 (剩餘張數, 持有, NEXT[0], NEXT[1])。空字串代表 -。</summary>
+    [Signal] public delegate void DeckStatusChangedEventHandler(int remaining, string heldTerrain, string previewTop, string previewSecond);
+
+    /// <summary>互動模式變更（中文標籤）。</summary>
+    [Signal] public delegate void ModeChangedExtEventHandler(string modeLabel);
+
+    /// <summary>HP 變更。</summary>
+    [Signal] public delegate void HpChangedExtEventHandler(int hp, int hpMax);
+
+    /// <summary>玩家移動完成（用於 TopBar 顯示位置 / RightPanel 收 log）。</summary>
+    [Signal] public delegate void PlayerPositionChangedEventHandler(int row, int col);
+
+    /// <summary>TURN LOG 新增一行。</summary>
+    [Signal] public delegate void LogAppendedEventHandler(string line);
+
     public override void _Ready()
     {
         _tileLayer = GetNode<Node2D>("TileLayer");
+        var w = (float)Size.X;
+        var h = (float)Size.Y;
         _projection = Projection.Default with
         {
-            ViewWidth = (float)Size.X,
-            ViewHeight = (float)Size.Y,
+            ViewWidth = w,
+            ViewHeight = h,
+            // BaseTileSize 自適應 viewport：5×5 視野下 5 cols / 5 rows 都能容下
+            BaseTileSize = Mathf.Min(w, h) / 6f,
+            // VanishingPoint / GroundY 改為相對視框比例
+            VanishingPointY = h * 0.32f,
+            GroundY = h,
         };
 
         TileVisualScene ??= ResourceLoader.Load<PackedScene>("res://scenes/map/tile_visual.tscn");
-
-        // HUD nodes
-        _deckLabel = GetNodeOrNull<Label>("Hud/DeckLabel");
-        _heldLabel = GetNodeOrNull<Label>("Hud/HeldLabel");
-        _nextPreviewLabel = GetNodeOrNull<Label>("Hud/NextPreviewLabel");
-        _modeLabel = GetNodeOrNull<Label>("Hud/ModeLabel");
-        _hpLabel = GetNodeOrNull<Label>("Hud/HpLabel");
-        _turnLog = GetNodeOrNull<Label>("TurnLog");
 
         // Popup + dialog
         _popup = GetNodeOrNull<ActionTriggerPopup>("ActionTriggerPopup");
@@ -82,6 +84,13 @@ public partial class MainMapRenderer : Control
         }
         if (_moveConfirm != null)
         {
+            // ConfirmationDialog 是獨立 Window，不繼承父 Control 的 Theme → 顯式套用
+            _moveConfirm.Theme = UiTheme.Build();
+            // 移除 Godot 預設標題列（標題會塞進 dialog_text 開頭，整段都在金邊框內）
+            _moveConfirm.Borderless = true;
+            _moveConfirm.Title = "";
+            // OK 按鈕（確認移動）→ Primary 紅底白字
+            UiTheme.ApplyPrimaryButtonStyle(_moveConfirm.GetOkButton());
             _moveConfirm.Confirmed += OnMoveConfirmed;
             _moveConfirm.Canceled += OnMoveCanceled;
         }
@@ -89,15 +98,52 @@ public partial class MainMapRenderer : Control
         SpawnAllTiles();
         SubscribeWorldMap();
 
-        var drawBtn = GetNodeOrNull<Button>("Hud/DrawTileButton");
-        if (drawBtn != null) drawBtn.Pressed += OnDrawTilePressed;
-
-        var resetBtn = GetNodeOrNull<Button>("Hud/ResetButton");
+        var resetBtn = GetNodeOrNull<Button>("ResetButtonContainer/ResetButton");
         if (resetBtn != null) resetBtn.Pressed += OnResetPressed;
 
+        // 視框尺寸可能還是 0（若被父 container 排版尚未完成）→ 等下一個 frame 重算
+        CallDeferred(nameof(InitialLayout));
+    }
+
+    private void InitialLayout()
+    {
+        var w = (float)Size.X;
+        var h = (float)Size.Y;
+        if (w > 0 && h > 0)
+        {
+            _projection = _projection with
+            {
+                ViewWidth = w,
+                ViewHeight = h,
+                BaseTileSize = Mathf.Min(w, h) / 6f,
+                VanishingPointY = h * 0.32f,
+                GroundY = h,
+            };
+        }
         UpdateAllTiles();
-        UpdateHud();
+        EmitHudSignals();
         AppendLog($"歡迎來到廢棄洋房。玩家位於 ({_worldMap.PlayerPos.Row},{_worldMap.PlayerPos.Col})。");
+    }
+
+    public override void _Notification(int what)
+    {
+        if (what == NotificationResized)
+        {
+            var w = (float)Size.X;
+            var h = (float)Size.Y;
+            if (w > 0 && h > 0)
+            {
+                _projection = _projection with
+                {
+                    ViewWidth = w,
+                    ViewHeight = h,
+                    BaseTileSize = Mathf.Min(w, h) / 6f,
+                    VanishingPointY = h * 0.32f,
+                    GroundY = h,
+                };
+                if (_tileLayer != null && _tileNodes[0, 0] != null) UpdateAllTiles();
+            }
+        }
     }
 
     public override void _ExitTree()
@@ -105,18 +151,12 @@ public partial class MainMapRenderer : Control
         UnsubscribeWorldMap();
     }
 
-    /// <summary>
-    /// Bug fix v2：改用 _GuiInput 直接接收 Control 區域內的點擊。
-    /// Area2D + collision shape 在 Control 階層下不可靠（hover 走的路徑與 click 不同），
-    /// 直接從螢幕座標反推到哪格更穩固。
-    /// </summary>
     public override void _GuiInput(InputEvent @event)
     {
         if (@event is not InputEventMouseButton { Pressed: true } mb) return;
 
         if (mb.ButtonIndex == MouseButton.Left)
         {
-            // 1. popup 可見 + 點擊位置在 popup 外 → 關 popup
             if (_popup is { Visible: true } popup)
             {
                 var popupRect = new Rect2(popup.Position, popup.Size);
@@ -126,13 +166,10 @@ public partial class MainMapRenderer : Control
                     AcceptEvent();
                     return;
                 }
-                // popup 內部點擊 → 讓 button 自己處理
                 return;
             }
 
-            // 2. 反推點到哪格
             var tile = FindClickedTile(mb.Position);
-            GD.Print($"[MainMapRenderer] _GuiInput click at {mb.Position} → tile {tile}");
             if (tile.HasValue)
             {
                 OnTileClicked(tile.Value.row, tile.Value.col);
@@ -141,7 +178,6 @@ public partial class MainMapRenderer : Control
         }
         else if (mb.ButtonIndex == MouseButton.Right)
         {
-            // 規格書 §3.1.4 / §5.1.4：右鍵取消
             if (_worldMap.Mode == InteractionMode.Move)
             {
                 _worldMap.CancelMoveMode();
@@ -157,15 +193,10 @@ public partial class MainMapRenderer : Control
         }
     }
 
-    /// <summary>
-    /// 反推：給定 MainMap Control 內的局部座標，找出該位置覆蓋的可見地塊。
-    /// 多格重疊時取中心距離最近者（單點透視下，多個格的 bounding box 可能重疊）。
-    /// </summary>
     private (int row, int col)? FindClickedTile(Vector2 localPos)
     {
         var (playerRow, playerCol) = _worldMap.PlayerPos;
         var (offsetRow, offsetCol) = _worldMap.CameraOffset;
-
         float bestDistSq = float.MaxValue;
         (int row, int col)? best = null;
 
@@ -197,6 +228,25 @@ public partial class MainMapRenderer : Control
         return best;
     }
 
+    // === 公開 API（給 TopBar 等外部呼叫）===
+
+    /// <summary>外部觸發抽下一張地塊（取代原本內嵌 HUD 按鈕）。</summary>
+    public void RequestDrawTile()
+    {
+        if (_worldMap.Mode != InteractionMode.Idle)
+        {
+            AppendLog("目前不是待命狀態，無法抽地塊。");
+            return;
+        }
+        if (_worldMap.RemainingTiles == 0)
+        {
+            AppendLog("牌堆已空。");
+            return;
+        }
+        _worldMap.BeginMapExpand();
+        AppendLog($"抽到地塊：{_worldMap.HeldTile}，請點擊綠色合法區放置。");
+    }
+
     // === Spawn / subscribe ===
 
     private void SpawnAllTiles()
@@ -213,7 +263,7 @@ public partial class MainMapRenderer : Control
             node.Name = $"Tile_{r}_{c}";
             node.Row = r;
             node.Col = c;
-            node.TileClicked += OnTileClicked;
+            // TileClicked signal 仍保留作為診斷/備用，主 click 走 _GuiInput
             _tileLayer.AddChild(node);
             _tileNodes[r, c] = node;
         }
@@ -251,12 +301,13 @@ public partial class MainMapRenderer : Control
     private void OnPlayerMoved(int oldRow, int oldCol, int newRow, int newCol)
     {
         AppendLog($"玩家移動：({oldRow},{oldCol}) → ({newRow},{newCol})");
+        EmitSignal(SignalName.PlayerPositionChanged, newRow, newCol);
         UpdateAllTiles();
     }
 
     private void OnModeChanged()
     {
-        UpdateHud();
+        EmitHudSignals();
         UpdateAllTiles();
     }
 
@@ -267,14 +318,13 @@ public partial class MainMapRenderer : Control
 
     private void OnHpChanged(int hp)
     {
-        UpdateHud();
+        EmitSignal(SignalName.HpChangedExt, hp, _worldMap.HpMax);
     }
 
-    // === Tile click handler — entry point for MapExpand / Move / Popup ===
+    // === Tile click dispatch ===
 
     private void OnTileClicked(int row, int col)
     {
-        GD.Print($"[MainMapRenderer] tile clicked ({row},{col}) mode={_worldMap.Mode} player={_worldMap.PlayerPos}");
         switch (_worldMap.Mode)
         {
             case InteractionMode.MapExpand:
@@ -294,7 +344,8 @@ public partial class MainMapRenderer : Control
                     _pendingMoveTarget = (row, col);
                     if (_moveConfirm != null)
                     {
-                        _moveConfirm.DialogText = $"確認移動到地塊 ({row},{col})？";
+                        // 標題塞進 dialog_text 開頭，避免 Godot 內建標題列跑到金邊框外
+                        _moveConfirm.DialogText = $"【 確認移動 】\n\n移動到地塊 ({row}, {col}) ？";
                         _moveConfirm.PopupCentered();
                     }
                     else
@@ -309,7 +360,6 @@ public partial class MainMapRenderer : Control
                 break;
 
             case InteractionMode.Idle:
-                // 規格書 §3.1.4：點角色所在格 → 彈出觸發器
                 if ((row, col) == _worldMap.PlayerPos)
                 {
                     ShowPopupAtPlayer();
@@ -323,8 +373,7 @@ public partial class MainMapRenderer : Control
         if (_popup is null) return;
         var (pr, pc) = _worldMap.PlayerPos;
         var node = _tileNodes[pr, pc];
-        var screenPos = node.Position; // node.Position 已是 Control 內座標
-        _popup.ShowAt(screenPos);
+        _popup.ShowAt(node.Position);
     }
 
     // === Popup callbacks ===
@@ -357,12 +406,7 @@ public partial class MainMapRenderer : Control
             + (success ? "成功" : "失敗") + marker);
     }
 
-    private void OnTalkSelected()
-    {
-        AppendLog("對話：這個地塊沒有可對話對象。");
-    }
-
-    // === ConfirmationDialog ===
+    private void OnTalkSelected() => AppendLog("對話：這個地塊沒有可對話對象。");
 
     private void OnMoveConfirmed()
     {
@@ -380,24 +424,6 @@ public partial class MainMapRenderer : Control
         AppendLog("已取消移動。");
     }
 
-    // === HUD button handlers ===
-
-    private void OnDrawTilePressed()
-    {
-        if (_worldMap.Mode != InteractionMode.Idle)
-        {
-            AppendLog("目前不是待命狀態，無法抽地塊。");
-            return;
-        }
-        if (_worldMap.RemainingTiles == 0)
-        {
-            AppendLog("牌堆已空。");
-            return;
-        }
-        _worldMap.BeginMapExpand();
-        AppendLog($"抽到地塊：{_worldMap.HeldTile}，請點擊綠色合法區放置。");
-    }
-
     private void OnResetPressed() => _worldMap.ResetCameraToPlayer();
 
     // === Layout ===
@@ -411,6 +437,7 @@ public partial class MainMapRenderer : Control
         for (int c = 0; c < WorldMap.Size; c++)
         {
             var node = _tileNodes[r, c];
+            if (node is null) continue;
             var data = _worldMap.GetTile(r, c);
 
             var relRow = (r - playerRow) - (int)Mathf.Round(offsetRow);
@@ -430,60 +457,42 @@ public partial class MainMapRenderer : Control
             node.SetTile(data.Terrain, data.IsPlaced, data.IsExplored);
             node.SetTileSize(projected.Width);
 
-            // Overlay：玩家標 / MapExpand 合法區 / Move 目標
             TileVisual.OverlayKind overlay = TileVisual.OverlayKind.None;
             if (r == playerRow && c == playerCol)
-            {
                 overlay = TileVisual.OverlayKind.PlayerMark;
-            }
             else if (_worldMap.Mode == InteractionMode.MapExpand && _worldMap.IsLegalPlacement(r, c))
-            {
                 overlay = TileVisual.OverlayKind.LegalPlacement;
-            }
             else if (_worldMap.Mode == InteractionMode.Move && _worldMap.IsLegalMoveTarget(r, c))
-            {
                 overlay = TileVisual.OverlayKind.MoveTarget;
-            }
             node.SetOverlay(overlay);
         }
     }
 
-    private void UpdateHud()
+    private void EmitHudSignals()
     {
-        if (_deckLabel != null) _deckLabel.Text = $"牌堆: {_worldMap.RemainingTiles}";
-        if (_heldLabel != null) _heldLabel.Text = $"持有: {(_worldMap.HeldTile?.ToString() ?? "-")}";
-        if (_nextPreviewLabel != null)
+        var preview = _worldMap.NextTilePreview;
+        var top = preview.Count > 0 ? preview[0].ToString() : "";
+        var second = preview.Count > 1 ? preview[1].ToString() : "";
+        EmitSignal(
+            SignalName.DeckStatusChanged,
+            _worldMap.RemainingTiles,
+            _worldMap.HeldTile?.ToString() ?? "",
+            top, second);
+
+        var modeLabel = _worldMap.Mode switch
         {
-            var preview = _worldMap.NextTilePreview;
-            var text = preview.Count switch
-            {
-                0 => "NEXT: -, -",
-                1 => $"NEXT: {preview[0]}, -",
-                _ => $"NEXT: {preview[0]}, {preview[1]}",
-            };
-            _nextPreviewLabel.Text = text;
-        }
-        if (_modeLabel != null)
-        {
-            _modeLabel.Text = "模式: " + _worldMap.Mode switch
-            {
-                InteractionMode.Idle => "待命",
-                InteractionMode.MapExpand => "放置地塊",
-                InteractionMode.Move => "選擇移動目標",
-                _ => "?",
-            };
-        }
-        if (_hpLabel != null) _hpLabel.Text = $"HP: {_worldMap.Hp}/{_worldMap.HpMax}";
+            InteractionMode.Idle => "待命",
+            InteractionMode.MapExpand => "放置地塊",
+            InteractionMode.Move => "選擇移動目標",
+            _ => "?",
+        };
+        EmitSignal(SignalName.ModeChangedExt, modeLabel);
+        EmitSignal(SignalName.HpChangedExt, _worldMap.Hp, _worldMap.HpMax);
     }
 
     private void AppendLog(string line)
     {
-        if (_turnLog is null) return;
-        var existing = _turnLog.Text ?? "";
-        var lines = existing.Split('\n');
-        // 保留最後 6 行
-        var tail = string.Join('\n', lines.TakeLast(6));
-        _turnLog.Text = tail + "\n" + line;
-        UpdateHud();
+        EmitSignal(SignalName.LogAppended, line);
+        EmitHudSignals();
     }
 }

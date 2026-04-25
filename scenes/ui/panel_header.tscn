@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://eko57yk1bil1"]
+
+[ext_resource type="Script" path="res://scripts/Ui/PanelHeader.cs" id="1_script"]
+
+[node name="PanelHeader" type="PanelContainer"]
+custom_minimum_size = Vector2(0, 32)
+script = ExtResource("1_script")

@@ -5,11 +5,12 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/action_trigger_popup.tscn" id="3_popup"]
 
 [node name="MainMap" type="Control"]
-custom_minimum_size = Vector2(560, 400)
 layout_mode = 3
-anchors_preset = 0
-offset_right = 560.0
-offset_bottom = 400.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_renderer")
 
 [node name="Background" type="ColorRect" parent="."]
@@ -25,69 +26,23 @@ mouse_filter = 2
 [node name="CameraNode" type="Node" parent="."]
 script = ExtResource("2_camera")
 
-[node name="Hud" type="VBoxContainer" parent="."]
+[node name="ResetButtonContainer" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -180.0
+offset_left = -160.0
 offset_top = 8.0
 offset_right = -8.0
-offset_bottom = 200.0
-grow_horizontal = 0
+offset_bottom = 36.0
+mouse_filter = 0
 
-[node name="DrawTileButton" type="Button" parent="Hud"]
-layout_mode = 2
-text = "抽下一張地塊"
-
-[node name="ResetButton" type="Button" parent="Hud"]
-layout_mode = 2
-text = "回到玩家中心"
-
-[node name="DeckLabel" type="Label" parent="Hud"]
-layout_mode = 2
-text = "牌堆: 10"
-modulate = Color(1, 1, 1, 0.85)
-
-[node name="HeldLabel" type="Label" parent="Hud"]
-layout_mode = 2
-text = "持有: -"
-modulate = Color(1, 1, 1, 0.85)
-
-[node name="NextPreviewLabel" type="Label" parent="Hud"]
-layout_mode = 2
-text = "NEXT: -, -"
-modulate = Color(1, 1, 1, 0.85)
-
-[node name="ModeLabel" type="Label" parent="Hud"]
-layout_mode = 2
-text = "模式: 待命"
-modulate = Color(1, 1, 1, 0.85)
-
-[node name="HpLabel" type="Label" parent="Hud"]
-layout_mode = 2
-text = "HP: 12/12"
-modulate = Color(1, 1, 1, 0.85)
-
-[node name="HintLabel" type="Label" parent="Hud"]
-layout_mode = 2
-text = "點玩家所在格 → 行動"
-modulate = Color(1, 1, 1, 0.7)
-
-[node name="TurnLog" type="Label" parent="."]
+[node name="ResetButton" type="Button" parent="ResetButtonContainer"]
 layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
+anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 8.0
-offset_top = -120.0
-offset_right = -8.0
-offset_bottom = -8.0
-grow_vertical = 0
-text = "—— TURN LOG ——"
-vertical_alignment = 2
-modulate = Color(1, 1, 1, 0.85)
+text = "回到玩家中心"
 
 [node name="ActionTriggerPopup" parent="." instance=ExtResource("3_popup")]
 layout_mode = 1
