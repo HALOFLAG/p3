@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://ekb6cxu2cnl1"]
+
+[ext_resource type="Script" path="res://scripts/Ui/CardView.cs" id="1_script"]
+
+[node name="CardView" type="PanelContainer"]
+custom_minimum_size = Vector2(70, 104)
+script = ExtResource("1_script")

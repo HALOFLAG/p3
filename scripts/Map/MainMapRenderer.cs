@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using CardNarrative.Core.Cards;
 using CardNarrative.Core.Map;
+using CardNarrative.Core.Models;
 using CardNarrative.Core.Services;
 using Godot;
 using Projection = CardNarrative.Core.Map.Projection;
@@ -67,6 +70,15 @@ public partial class MainMapRenderer : Control
     /// <summary>手牌數變更（demo 計數）。</summary>
     [Signal] public delegate void HandChangedExtEventHandler(int hand, int handMax);
 
+    /// <summary>手牌實際內容變更：傳出每張卡的 (id, name, type, cost) 序列化字串。</summary>
+    [Signal] public delegate void HandCardsChangedEventHandler(string[] cardIds, string[] cardNames, string[] cardTypes, int[] cardCosts);
+
+    /// <summary>同伴代消耗發生（log 用）。</summary>
+    [Signal] public delegate void CompanionApSubstitutedEventHandler(string companionDisplayName);
+
+    /// <summary>行動卡抽牌堆 / 棄牌堆計數變更。</summary>
+    [Signal] public delegate void ActionDeckCountsChangedEventHandler(int drawCount, int discardCount);
+
     public override void _Ready()
     {
         _tileLayer = GetNode<Node2D>("TileLayer");
@@ -115,8 +127,26 @@ public partial class MainMapRenderer : Control
         var resetBtn = GetNodeOrNull<Button>("ResetButtonContainer/ResetButton");
         if (resetBtn != null) resetBtn.Pressed += OnResetPressed;
 
+        // 動態加 PlayCardZone（規格書 §4.2.2 拖曳出牌接收區）
+        var dropZone = new PlayCardZone { Name = "PlayCardZone" };
+        AddChild(dropZone);
+        // _Ready 內部會 SetAnchorsAndOffsetsPreset(FullRect) — 自動覆蓋整個 MapArea
+        dropZone.CardDropped += OnCardDroppedToMap;
+        // 把 PlayCardZone 移到 TileLayer 之後、UI Controls (Reset/Popup/Dialog) 之前
+        // 避免 PlayCardZone 蓋住 popup 與 reset button
+        var tileLayer = GetNodeOrNull("TileLayer");
+        if (tileLayer != null)
+        {
+            MoveChild(dropZone, tileLayer.GetIndex() + 1);
+        }
+
         // 視框尺寸可能還是 0（若被父 container 排版尚未完成）→ 等下一個 frame 重算
         CallDeferred(nameof(InitialLayout));
+    }
+
+    private void OnCardDroppedToMap(string cardId)
+    {
+        RequestPlayCard(cardId);
     }
 
     private void InitialLayout()
@@ -261,6 +291,27 @@ public partial class MainMapRenderer : Control
         AppendLog($"抽到地塊：{_worldMap.HeldTile}，請點擊綠色合法區放置。");
     }
 
+    /// <summary>外部注入行動卡 deck（規格書 §3.4 序幕 setupRules.initialActionDeck）。</summary>
+    public void LoadActionDeck(IEnumerable<ActionCard> cards)
+    {
+        _worldMap.LoadActionDeck(cards);
+        AppendLog($"載入行動卡牌堆（{_worldMap.Hand.Count} 張在手牌、{_worldMap.ActionDeckRemaining} 張在抽牌堆）");
+    }
+
+    /// <summary>外部觸發出牌（HandDock 點卡 → 確認對話框 → 此處）。</summary>
+    public void RequestPlayCard(string cardId)
+    {
+        var result = _worldMap.TryPlayCard(cardId);
+        if (result.Success)
+        {
+            AppendLog($"打出「{cardId}」消耗 {result.ApSpent} AP（手牌 {_worldMap.HandSize}/{WorldMap.HandSizeMax}、棄牌堆 {_worldMap.ActionDiscardCount}）");
+        }
+        else
+        {
+            AppendLog($"出牌失敗：{result.Message}");
+        }
+    }
+
     /// <summary>外部觸發 NEXT TURN — 推進到下一回合（規格書 §3.1.1 簡化版）。</summary>
     public void RequestAdvanceTurn()
     {
@@ -312,6 +363,8 @@ public partial class MainMapRenderer : Control
         _worldMap.TurnChanged += OnTurnChanged;
         _worldMap.ApChanged += OnApChanged;
         _worldMap.HandSizeChanged += OnHandSizeChanged;
+        _worldMap.HandChanged += OnHandChanged;
+        _worldMap.CompanionSubstituted += OnCompanionSubstituted;
     }
 
     private void UnsubscribeWorldMap()
@@ -325,6 +378,25 @@ public partial class MainMapRenderer : Control
         _worldMap.TurnChanged -= OnTurnChanged;
         _worldMap.ApChanged -= OnApChanged;
         _worldMap.HandSizeChanged -= OnHandSizeChanged;
+        _worldMap.HandChanged -= OnHandChanged;
+        _worldMap.CompanionSubstituted -= OnCompanionSubstituted;
+    }
+
+    private void OnHandChanged(IReadOnlyList<ActionCard> hand)
+    {
+        var ids = hand.Select(c => c.Id).ToArray();
+        var names = hand.Select(c => c.Name).ToArray();
+        var types = hand.Select(c => c.Type.ToString()).ToArray();
+        var costs = hand.Select(c => c.Cost).ToArray();
+        EmitSignal(SignalName.HandCardsChanged, ids, names, types, costs);
+        // 順便推送抽棄牌堆計數（hand 變動通常伴隨抽棄堆變動）
+        EmitSignal(SignalName.ActionDeckCountsChanged, _worldMap.ActionDeckRemaining, _worldMap.ActionDiscardCount);
+    }
+
+    private void OnCompanionSubstituted(CompanionAiState c)
+    {
+        AppendLog($"[同伴 {c.DisplayName} 代消耗 1 AP（剩 {c.RemainingAp} AP）]");
+        EmitSignal(SignalName.CompanionApSubstituted, c.DisplayName);
     }
 
     private void OnTurnChanged(int turn)

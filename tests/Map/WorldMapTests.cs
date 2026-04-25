@@ -1,3 +1,4 @@
+using CardNarrative.Core.Cards;
 using CardNarrative.Core.Map;
 using FluentAssertions;
 
@@ -5,17 +6,33 @@ namespace CardNarrative.Tests.Map;
 
 public class WorldMapTests
 {
+    /// <summary>同伴永不代消耗 — 用於既有測試保持單純 AP 邏輯。</summary>
+    private sealed class NoSubstituteRandom : IRandomProvider
+    {
+        public double NextDouble() => 0.99; // > 0.5 → 同伴不代消耗
+        public int Next(int maxExclusive) => 0;
+    }
+
+    /// <summary>同伴一定代消耗 — 用於代消耗整合測試。</summary>
+    private sealed class AlwaysSubstituteRandom : IRandomProvider
+    {
+        public double NextDouble() => 0.0; // < 0.5 → 一定代消耗
+        public int Next(int maxExclusive) => 0;
+    }
+
+    private static WorldMap NewMap() => new(new NoSubstituteRandom());
+
     [Fact]
     public void Constructor_PlayerStartsAt4_4()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.PlayerPos.Should().Be((4, 4));
     }
 
     [Fact]
     public void Constructor_InitialTileIsPlacedAndExplored()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         var tile = map.GetTile(4, 4);
         tile.IsPlaced.Should().BeTrue();
         tile.IsExplored.Should().BeTrue();
@@ -24,7 +41,7 @@ public class WorldMapTests
     [Fact]
     public void Constructor_OtherTilesNotPlaced()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         for (int r = 0; r < WorldMap.Size; r++)
         for (int c = 0; c < WorldMap.Size; c++)
         {
@@ -37,7 +54,7 @@ public class WorldMapTests
     [Fact]
     public void Constructor_StartingMode_IsIdle()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.Mode.Should().Be(InteractionMode.Idle);
         map.HeldTile.Should().BeNull();
     }
@@ -45,14 +62,14 @@ public class WorldMapTests
     [Fact]
     public void Constructor_DeckHasTenTiles()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.RemainingTiles.Should().Be(10);
     }
 
     [Fact]
     public void NextTilePreview_ReturnsTopTwoOfDeck()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.NextTilePreview.Should().HaveCount(2);
         map.NextTilePreview[0].Should().Be(MapTerrain.Path);
         map.NextTilePreview[1].Should().Be(MapTerrain.Forest);
@@ -67,7 +84,7 @@ public class WorldMapTests
     [InlineData(4, 5)] // right
     public void IsLegalPlacement_FourDirectionalAdjacentEmpty_ReturnsTrue(int r, int c)
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.IsLegalPlacement(r, c).Should().BeTrue();
     }
 
@@ -77,14 +94,14 @@ public class WorldMapTests
     [InlineData(4, 4)] // already placed
     public void IsLegalPlacement_NotAdjacentOrOccupied_ReturnsFalse(int r, int c)
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.IsLegalPlacement(r, c).Should().BeFalse();
     }
 
     [Fact]
     public void IsLegalPlacement_OutOfBounds_ReturnsFalse()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.IsLegalPlacement(-1, 4).Should().BeFalse();
         map.IsLegalPlacement(9, 4).Should().BeFalse();
     }
@@ -94,7 +111,7 @@ public class WorldMapTests
     [Fact]
     public void BeginMapExpand_FromIdle_DrawsTopOfDeck()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.BeginMapExpand().Should().BeTrue();
         map.Mode.Should().Be(InteractionMode.MapExpand);
         map.HeldTile.Should().Be(MapTerrain.Path); // top of demo deck
@@ -104,7 +121,7 @@ public class WorldMapTests
     [Fact]
     public void BeginMapExpand_WhileNotIdle_ReturnsFalse()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.BeginMapExpand();
         map.BeginMapExpand().Should().BeFalse();
     }
@@ -112,7 +129,7 @@ public class WorldMapTests
     [Fact]
     public void TryPlaceHeldTile_LegalCell_PlacesAndFiresEvents()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.BeginMapExpand();
 
         var placed = new List<(MapTerrain t, int r, int c)>();
@@ -133,7 +150,7 @@ public class WorldMapTests
     [Fact]
     public void TryPlaceHeldTile_IllegalCell_ReturnsFalseAndKeepsHeld()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.BeginMapExpand();
         map.TryPlaceHeldTile(0, 0).Should().BeFalse(); // 不相鄰
         map.HeldTile.Should().Be(MapTerrain.Path);
@@ -143,7 +160,7 @@ public class WorldMapTests
     [Fact]
     public void CancelMapExpand_ReturnsTileToTopOfDeck()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.BeginMapExpand();
 
         map.CancelMapExpand();
@@ -159,7 +176,7 @@ public class WorldMapTests
     [Fact]
     public void BeginMoveMode_FromIdle_SwitchesMode()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         var fired = 0;
         map.ModeChanged += () => fired++;
 
@@ -172,7 +189,7 @@ public class WorldMapTests
     [Fact]
     public void IsLegalMoveTarget_PlacedFourAdjacent_True()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4); // Path
 
         map.IsLegalMoveTarget(3, 4).Should().BeTrue();
@@ -181,7 +198,7 @@ public class WorldMapTests
     [Fact]
     public void IsLegalMoveTarget_UnplacedAdjacent_False()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         // (3,4) 未放置
         map.IsLegalMoveTarget(3, 4).Should().BeFalse();
     }
@@ -189,7 +206,7 @@ public class WorldMapTests
     [Fact]
     public void TryMovePlayerTo_PlacedAdjacent_Succeeds()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4);
 
         map.TryMovePlayerTo(3, 4).Should().Be(MovePlayerResult.Ok);
@@ -200,7 +217,7 @@ public class WorldMapTests
     [Fact]
     public void TryMovePlayerTo_UnplacedAdjacent_Fails()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.TryMovePlayerTo(3, 4).Should().Be(MovePlayerResult.IllegalTarget);
         map.PlayerPos.Should().Be((4, 4));
     }
@@ -211,7 +228,7 @@ public class WorldMapTests
     [InlineData(2, 4)]
     public void TryMovePlayerTo_DiagonalOrFar_Fails(int r, int c)
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4);
         map.TryMovePlayerTo(r, c).Should().Be(MovePlayerResult.IllegalTarget);
     }
@@ -219,7 +236,7 @@ public class WorldMapTests
     [Fact]
     public void TryMovePlayerTo_FromMoveMode_ReturnsToIdle()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4);
         map.BeginMoveMode();
 
@@ -231,7 +248,7 @@ public class WorldMapTests
     [Fact]
     public void CancelMoveMode_ReturnsToIdle()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.BeginMoveMode();
         map.CancelMoveMode();
         map.Mode.Should().Be(InteractionMode.Idle);
@@ -242,7 +259,7 @@ public class WorldMapTests
     [Fact]
     public void Rest_HpAlreadyMax_NoOp()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         var orig = map.Hp;
         map.Hp.Should().Be(map.HpMax);
         var hpFired = 0;
@@ -260,10 +277,10 @@ public class WorldMapTests
     [Fact]
     public void Constructor_StartsAtTurn1WithFullAp()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.Turn.Should().Be(1);
         map.Ap.Should().Be(WorldMap.ApMax);
-        map.HandSize.Should().Be(WorldMap.HandSizeMax);
+        map.HandSize.Should().Be(0); // 未 LoadActionDeck，手牌為空
         map.FirstMoveUsedThisTurn.Should().BeFalse();
         map.FirstObserveUsedThisTurn.Should().BeFalse();
     }
@@ -271,7 +288,7 @@ public class WorldMapTests
     [Fact]
     public void TryMovePlayerTo_FirstMoveThisTurn_FreeNoApCost()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4);
         var startAp = map.Ap;
 
@@ -284,7 +301,7 @@ public class WorldMapTests
     [Fact]
     public void TryMovePlayerTo_SecondMoveThisTurn_CostsOneAp()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4);  // (4,4)->(3,4) 鄰
         PlaceTile(map, 2, 4);  // (3,4)->(2,4) 鄰
 
@@ -298,7 +315,7 @@ public class WorldMapTests
     [Fact]
     public void TryMovePlayerTo_NotEnoughAp_Fails()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4);
         PlaceTile(map, 2, 4);
         PlaceTile(map, 1, 4);
@@ -317,7 +334,7 @@ public class WorldMapTests
     [Fact]
     public void Observe_FirstThisTurn_FreeAndPerforms()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         var startAp = map.Ap;
         var roll = new FixedRoll(3, 4); // 7 + skill 3 = 10 → 成功
 
@@ -332,7 +349,7 @@ public class WorldMapTests
     [Fact]
     public void Observe_SecondThisTurn_CostsTwoAp()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.Observe(new FixedRoll(1, 1), 3); // 首次免費
         var afterFirst = map.Ap;
         map.Observe(new FixedRoll(2, 2), 3); // 第 2 次扣 2
@@ -342,7 +359,7 @@ public class WorldMapTests
     [Fact]
     public void Observe_NotEnoughAp_DoesNotPerform()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.Observe(new FixedRoll(3, 3), 3); // 首次免費
         map.Observe(new FixedRoll(3, 3), 3); // 1 AP → 1（扣 2）→ 應變 1
         // AP 從 3 → 3（首次免費）→ 1
@@ -357,7 +374,7 @@ public class WorldMapTests
     [Fact]
     public void Rest_ConsumesAllRemainingApAndHealsHp()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         // 先扣血（用 Observe 不能扣血；用 reflection 太繞，直接測試 Rest 在 HP 滿時 NoOp 已驗）
         // 換策略：先把 HP 降下來 — 但目前沒公開的「受傷」介面。改測「沒 AP 時 Rest = NoOp」
         map.Observe(new FixedRoll(1, 1), 3); // 首次免費
@@ -371,7 +388,7 @@ public class WorldMapTests
     [Fact]
     public void AdvanceTurn_ResetsApAndHandAndIncrementsTurn()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         PlaceTile(map, 3, 4);
         PlaceTile(map, 2, 4);
         map.TryMovePlayerTo(3, 4);
@@ -384,7 +401,9 @@ public class WorldMapTests
         ok.Should().BeTrue();
         map.Turn.Should().Be(2);
         map.Ap.Should().Be(WorldMap.ApMax);
-        map.HandSize.Should().Be(WorldMap.HandSizeMax);
+        // HandSize 沒 LoadActionDeck 仍為 0；同伴 AP 應重置
+        map.HandSize.Should().Be(0);
+        map.Companions.Should().AllSatisfy(c => c.RemainingAp.Should().Be(WorldMap.CompanionApMax));
         map.FirstMoveUsedThisTurn.Should().BeFalse();
         map.FirstObserveUsedThisTurn.Should().BeFalse();
     }
@@ -392,7 +411,7 @@ public class WorldMapTests
     [Fact]
     public void AdvanceTurn_FiresAllRelevantEvents()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         var turnFired = 0; var apFired = 0; var handFired = 0;
         map.TurnChanged += _ => turnFired++;
         map.ApChanged += (_, _) => apFired++;
@@ -408,7 +427,7 @@ public class WorldMapTests
     [Fact]
     public void AdvanceTurn_WhileNotIdle_Rejects()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.BeginMapExpand();
         map.AdvanceTurn().Should().BeFalse();
         map.Turn.Should().Be(1);
@@ -426,7 +445,7 @@ public class WorldMapTests
     [Fact]
     public void SetCameraOffset_FiresEvent()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         var fired = 0;
         map.CameraOffsetChanged += () => fired++;
 
@@ -439,7 +458,7 @@ public class WorldMapTests
     [Fact]
     public void ResetCameraToPlayer_RestoresZeroOffset()
     {
-        var map = new WorldMap();
+        var map = NewMap();
         map.SetCameraOffset(3f, 4f);
         map.ResetCameraToPlayer();
         map.CameraOffset.Should().Be((0f, 0f));

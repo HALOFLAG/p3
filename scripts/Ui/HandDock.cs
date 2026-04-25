@@ -5,10 +5,17 @@ namespace HauntedManor.Scripts.Ui;
 
 /// <summary>
 /// 區塊 #16 — HandDock 手牌區（中欄底部，~864×120）。
-/// 本次為 placeholder：5 張示範手牌 + 右側牌堆指示。
+/// Stage 1：實際手牌（從 WorldMap 訂閱 HandCardsChanged）+ 點擊出牌。
 /// </summary>
 public partial class HandDock : PanelContainer
 {
+    [Signal] public delegate void CardClickedExtEventHandler(string cardId);
+
+    private HBoxContainer? _cardRow;
+    private Label? _deckCountLabel;
+    private Label? _discardCountLabel;
+    private PackedScene? _cardViewScene;
+
     public override void _Ready()
     {
         AddThemeStyleboxOverride("panel", new StyleBoxFlat
@@ -20,6 +27,8 @@ public partial class HandDock : PanelContainer
             ContentMarginTop = 8, ContentMarginBottom = 8,
         });
 
+        _cardViewScene = ResourceLoader.Load<PackedScene>("res://scenes/ui/card_view.tscn");
+
         var hbox = new HBoxContainer
         {
             MouseFilter = MouseFilterEnum.Pass,
@@ -29,79 +38,61 @@ public partial class HandDock : PanelContainer
         hbox.AddThemeConstantOverride("separation", 8);
         AddChild(hbox);
 
-        // 5 張手牌 placeholder（卡型示意）
-        string[] cardNames = { "交叉考據", "威嚇", "追蹤足跡", "靈感推演", "巧言令色" };
-        string[] cardTypes = { "知識", "戰鬥", "探索", "知識", "社交" };
-        Color[] cardColors = { Palette.Purple, Palette.Red, Palette.Green, Palette.Purple, Palette.Blue };
+        _cardRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Pass };
+        _cardRow.AddThemeConstantOverride("separation", 6);
+        hbox.AddChild(_cardRow);
 
-        for (int i = 0; i < cardNames.Length; i++)
-        {
-            hbox.AddChild(MakeHandCard(cardNames[i], cardTypes[i], cardColors[i]));
-        }
+        // 預設 placeholder（無手牌時的提示）
+        var placeholder = MakeColoredLabel("（尚未載入手牌）", 11, Palette.OrnamentInk);
+        placeholder.Name = "Placeholder";
+        _cardRow.AddChild(placeholder);
 
         // spacer
         hbox.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
-        // 牌堆指示（右側）
-        var deckIndicator = new PanelContainer { CustomMinimumSize = new Vector2(70, 96) };
-        deckIndicator.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = Palette.WithAlpha(Palette.InkLight, 0.6f),
-            BorderColor = Palette.Ink,
-            BorderWidthLeft = 1, BorderWidthRight = 1,
-            BorderWidthTop = 1, BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
-            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
-        });
-        var di = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        deckIndicator.AddChild(di);
-        var top = MakeColoredLabel("牌堆", 11, Palette.PaperLight);
-        top.HorizontalAlignment = HorizontalAlignment.Center;
-        di.AddChild(top);
-        var num = MakeColoredLabel("12", 22, Palette.Gold);
-        num.HorizontalAlignment = HorizontalAlignment.Center;
-        di.AddChild(num);
-        hbox.AddChild(deckIndicator);
+        // 牌堆指示
+        var deckCol = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        hbox.AddChild(deckCol);
+        deckCol.AddChild(MakeColoredLabel("抽牌堆", 10, Palette.OrnamentInk));
+        _deckCountLabel = MakeColoredLabel("0", 18, Palette.Gold);
+        _deckCountLabel.HorizontalAlignment = HorizontalAlignment.Center;
+        deckCol.AddChild(_deckCountLabel);
+
+        var discardCol = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
+        hbox.AddChild(discardCol);
+        discardCol.AddChild(MakeColoredLabel("棄牌堆", 10, Palette.OrnamentInk));
+        _discardCountLabel = MakeColoredLabel("0", 18, Palette.OrnamentInk);
+        _discardCountLabel.HorizontalAlignment = HorizontalAlignment.Center;
+        discardCol.AddChild(_discardCountLabel);
     }
 
-    private static PanelContainer MakeHandCard(string name, string type, Color accent)
+    public void OnHandCardsChanged(string[] cardIds, string[] cardNames, string[] cardTypes, int[] cardCosts)
     {
-        var card = new PanelContainer { CustomMinimumSize = new Vector2(70, 96) };
-        card.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        if (_cardRow is null || _cardViewScene is null) return;
+        // 清掉舊
+        foreach (var child in _cardRow.GetChildren()) child.QueueFree();
+
+        if (cardIds.Length == 0)
         {
-            BgColor = Palette.Paper,
-            BorderColor = Palette.Gold,
-            BorderWidthLeft = 2, BorderWidthRight = 2,
-            BorderWidthTop = 2, BorderWidthBottom = 2,
-            CornerRadiusTopLeft = 3, CornerRadiusTopRight = 3,
-            CornerRadiusBottomLeft = 3, CornerRadiusBottomRight = 3,
-            ShadowColor = Palette.WithAlpha(Palette.Ink, 0.3f),
-            ShadowSize = 4,
-            ShadowOffset = new Vector2(2, 2),
-        });
-        var v = new VBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
-        v.AddThemeConstantOverride("separation", 4);
-        card.AddChild(v);
+            _cardRow.AddChild(MakeColoredLabel("（手牌空）", 11, Palette.OrnamentInk));
+            return;
+        }
 
-        // 卡片頂部色帶
-        var typeBand = new PanelContainer { CustomMinimumSize = new Vector2(0, 16) };
-        typeBand.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        for (int i = 0; i < cardIds.Length; i++)
         {
-            BgColor = accent,
-            ContentMarginLeft = 4, ContentMarginRight = 4,
-            ContentMarginTop = 1, ContentMarginBottom = 1,
-        });
-        var tb = MakeColoredLabel(type, 9, Palette.PaperLight);
-        tb.HorizontalAlignment = HorizontalAlignment.Center;
-        typeBand.AddChild(tb);
-        v.AddChild(typeBand);
+            var card = _cardViewScene.Instantiate<CardView>();
+            _cardRow.AddChild(card);
+            card.SetCard(cardIds[i], cardNames[i], cardTypes[i], cardCosts[i]);
+            string cid = cardIds[i];
+            card.CardClicked += _ => EmitSignal(SignalName.CardClickedExt, cid);
+        }
+    }
 
-        var nameLabel = MakeColoredLabel(name, 10, Palette.Ink);
-        nameLabel.HorizontalAlignment = HorizontalAlignment.Center;
-        nameLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        v.AddChild(nameLabel);
-
-        return card;
+    /// <summary>由 MainBootstrap 呼叫更新抽/棄牌堆計數。</summary>
+    public void OnDeckCountsChanged(int drawCount, int discardCount)
+    {
+        if (_deckCountLabel != null) _deckCountLabel.Text = drawCount.ToString();
+        if (_discardCountLabel != null) _discardCountLabel.Text = discardCount.ToString();
     }
 
     private static Label MakeColoredLabel(string text, int size, Color color)
