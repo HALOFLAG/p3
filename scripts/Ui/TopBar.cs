@@ -6,7 +6,7 @@ namespace HauntedManor.Scripts.Ui;
 /// <summary>
 /// 區塊 #1/#2/#3/#5/#6 — TopBar（規格書 §4.1 + 用戶版面）。
 /// 左：✦廢棄洋房調查 ★★★ + 勝利條件鈕
-/// 中：第 X 回合 + NEXT TURN ▶
+/// 中：第 X 回合 + 模式 + AP pips + 手牌 + 抽地塊 + NEXT TURN ▶
 /// 右：選項
 /// </summary>
 public partial class TopBar : PanelContainer
@@ -18,10 +18,13 @@ public partial class TopBar : PanelContainer
 
     private Label? _turnLabel;
     private Label? _modeLabel;
+    private Label? _handLabel;
+    private HBoxContainer? _apBar;
+    private int _apMaxCache = 3;
 
     public override void _Ready()
     {
-        // 套用 PaperDark 32px 樣式但拉高為 48
+        // PaperDark 樣式
         var style = UiTheme.PanelHeaderStyle();
         style.BgColor = Palette.Paper;
         style.ContentMarginTop = 8;
@@ -32,23 +35,21 @@ public partial class TopBar : PanelContainer
         hbox.AddThemeConstantOverride("separation", 12);
         AddChild(hbox);
 
-        // === 左區 ===
+        // === 左區：標題 + 勝利條件 ===
         var leftBox = new VBoxContainer();
         leftBox.AddThemeConstantOverride("separation", 2);
         hbox.AddChild(leftBox);
 
-        var titleLbl = MakeLabel("✦ 廢棄洋房調查 ★★★", 14, Palette.Ink);
-        leftBox.AddChild(titleLbl);
+        leftBox.AddChild(MakeLabel("✦ 廢棄洋房調查 ★★★", 14, Palette.Ink));
 
         var victoryBtn = new Button { Text = "勝利條件" };
         victoryBtn.AddThemeFontSizeOverride("font_size", 10);
         victoryBtn.Pressed += () => EmitSignal(SignalName.VictoryConditionsPressed);
         leftBox.AddChild(victoryBtn);
 
-        // === 分隔 ===
         AddDivider(hbox);
 
-        // === 中區 ===
+        // === 中區：回合 + 模式 + AP + 手牌 + 動作 ===
         var midBox = new HBoxContainer();
         midBox.AddThemeConstantOverride("separation", 8);
         hbox.AddChild(midBox);
@@ -58,6 +59,23 @@ public partial class TopBar : PanelContainer
 
         _modeLabel = MakeLabel("(待命)", 11, Palette.OrnamentInk);
         midBox.AddChild(_modeLabel);
+
+        AddDivider(midBox);
+
+        // AP pips：用 HBox + ColorRect 圓點
+        midBox.AddChild(MakeLabel("AP", 11, Palette.OrnamentInk));
+        _apBar = new HBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
+        _apBar.AddThemeConstantOverride("separation", 3);
+        midBox.AddChild(_apBar);
+        BuildApPips(3, 3); // 預設
+
+        AddDivider(midBox);
+
+        midBox.AddChild(MakeLabel("手牌", 11, Palette.OrnamentInk));
+        _handLabel = MakeLabel("5/5", 11, Palette.Ink);
+        midBox.AddChild(_handLabel);
+
+        AddDivider(midBox);
 
         var drawBtn = new Button { Text = "抽地塊" };
         drawBtn.AddThemeFontSizeOverride("font_size", 11);
@@ -71,8 +89,7 @@ public partial class TopBar : PanelContainer
         midBox.AddChild(nextTurnBtn);
 
         // === 右側填充 + 選項 ===
-        var spacer = new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        hbox.AddChild(spacer);
+        hbox.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
 
         var optionsBtn = new Button { Text = "⚙ 選項" };
         optionsBtn.AddThemeFontSizeOverride("font_size", 11);
@@ -82,12 +99,61 @@ public partial class TopBar : PanelContainer
 
     public void OnPlayerPositionChanged(int row, int col)
     {
-        // demo：暫無回合計數，先顯示位置
+        // 暫不在 TopBar 顯示位置（在 RightPanel TURN LOG 看到即可）
     }
 
     public void OnModeChanged(string modeLabel)
     {
         if (_modeLabel != null) _modeLabel.Text = $"({modeLabel})";
+    }
+
+    public void OnTurnChanged(int turn, int turnLimit)
+    {
+        if (_turnLabel != null) _turnLabel.Text = $"第 {turn} / {turnLimit} 回合";
+    }
+
+    public void OnApChanged(int ap, int apMax)
+    {
+        if (_apBar is null) return;
+        if (apMax != _apMaxCache)
+        {
+            _apMaxCache = apMax;
+            BuildApPips(ap, apMax);
+            return;
+        }
+        // 只更新顯示狀態
+        for (int i = 0; i < _apBar.GetChildCount(); i++)
+        {
+            if (_apBar.GetChild(i) is ColorRect pip)
+            {
+                pip.Color = i < ap ? Palette.Gold : Palette.WithAlpha(Palette.Brown, 0.3f);
+            }
+        }
+    }
+
+    public void OnHandChanged(int hand, int handMax)
+    {
+        if (_handLabel != null) _handLabel.Text = $"{hand}/{handMax}";
+    }
+
+    private void BuildApPips(int ap, int apMax)
+    {
+        if (_apBar is null) return;
+        // 清掉舊
+        foreach (var child in _apBar.GetChildren())
+        {
+            child.QueueFree();
+        }
+        for (int i = 0; i < apMax; i++)
+        {
+            var pip = new ColorRect
+            {
+                CustomMinimumSize = new Vector2(12, 12),
+                Color = i < ap ? Palette.Gold : Palette.WithAlpha(Palette.Brown, 0.3f),
+                MouseFilter = MouseFilterEnum.Ignore,
+            };
+            _apBar.AddChild(pip);
+        }
     }
 
     private static Label MakeLabel(string text, int size, Color color)
@@ -109,5 +175,4 @@ public partial class TopBar : PanelContainer
         };
         parent.AddChild(div);
     }
-
 }

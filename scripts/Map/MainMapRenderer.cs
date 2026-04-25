@@ -31,10 +31,15 @@ public partial class MainMapRenderer : Control
 
     // Demo Skill 屬性（規格書 §3.3 觀察用 = 綠探索）
     private const int DemoSkill = 3;
-    private const int ObserveTn = 10;
     private readonly IDiceService _dice = new SeededDiceService(seed: Random.Shared.Next());
+    private readonly DiceServiceRollProvider _rollProvider;
 
     public WorldMap WorldMap => _worldMap;
+
+    public MainMapRenderer()
+    {
+        _rollProvider = new DiceServiceRollProvider(_dice);
+    }
 
     // === 對外 Signals（取代內嵌 HUD）===
 
@@ -52,6 +57,15 @@ public partial class MainMapRenderer : Control
 
     /// <summary>TURN LOG 新增一行。</summary>
     [Signal] public delegate void LogAppendedEventHandler(string line);
+
+    /// <summary>回合變更（NEXT TURN 後）。</summary>
+    [Signal] public delegate void TurnChangedExtEventHandler(int turn, int turnLimit);
+
+    /// <summary>AP 變更（行動消耗或 Draw 重置）。</summary>
+    [Signal] public delegate void ApChangedExtEventHandler(int ap, int apMax);
+
+    /// <summary>手牌數變更（demo 計數）。</summary>
+    [Signal] public delegate void HandChangedExtEventHandler(int hand, int handMax);
 
     public override void _Ready()
     {
@@ -247,6 +261,24 @@ public partial class MainMapRenderer : Control
         AppendLog($"抽到地塊：{_worldMap.HeldTile}，請點擊綠色合法區放置。");
     }
 
+    /// <summary>外部觸發 NEXT TURN — 推進到下一回合（規格書 §3.1.1 簡化版）。</summary>
+    public void RequestAdvanceTurn()
+    {
+        if (_worldMap.Mode != InteractionMode.Idle)
+        {
+            AppendLog("目前不是待命狀態，無法結束回合。");
+            return;
+        }
+        if (_worldMap.Turn >= WorldMap.TurnLimit)
+        {
+            AppendLog($"已達 {WorldMap.TurnLimit} 回合上限（後續 Phase 將觸發失敗結局）。");
+            return;
+        }
+        AppendLog($"—— 結束第 {_worldMap.Turn} 回合 ——");
+        _worldMap.AdvanceTurn();
+        AppendLog($"—— 第 {_worldMap.Turn} 回合 開始（Draw：AP {_worldMap.Ap}/{WorldMap.ApMax}，手牌補至 {_worldMap.HandSize}/{WorldMap.HandSizeMax}）——");
+    }
+
     // === Spawn / subscribe ===
 
     private void SpawnAllTiles()
@@ -277,6 +309,9 @@ public partial class MainMapRenderer : Control
         _worldMap.ModeChanged += OnModeChanged;
         _worldMap.TilePlaced += OnTilePlaced;
         _worldMap.HpChanged += OnHpChanged;
+        _worldMap.TurnChanged += OnTurnChanged;
+        _worldMap.ApChanged += OnApChanged;
+        _worldMap.HandSizeChanged += OnHandSizeChanged;
     }
 
     private void UnsubscribeWorldMap()
@@ -287,6 +322,24 @@ public partial class MainMapRenderer : Control
         _worldMap.ModeChanged -= OnModeChanged;
         _worldMap.TilePlaced -= OnTilePlaced;
         _worldMap.HpChanged -= OnHpChanged;
+        _worldMap.TurnChanged -= OnTurnChanged;
+        _worldMap.ApChanged -= OnApChanged;
+        _worldMap.HandSizeChanged -= OnHandSizeChanged;
+    }
+
+    private void OnTurnChanged(int turn)
+    {
+        EmitSignal(SignalName.TurnChangedExt, turn, WorldMap.TurnLimit);
+    }
+
+    private void OnApChanged(int ap, int apMax)
+    {
+        EmitSignal(SignalName.ApChangedExt, ap, apMax);
+    }
+
+    private void OnHandSizeChanged(int hand, int handMax)
+    {
+        EmitSignal(SignalName.HandChangedExt, hand, handMax);
     }
 
     // === WorldMap event handlers ===
@@ -300,7 +353,7 @@ public partial class MainMapRenderer : Control
 
     private void OnPlayerMoved(int oldRow, int oldCol, int newRow, int newCol)
     {
-        AppendLog($"玩家移動：({oldRow},{oldCol}) → ({newRow},{newCol})");
+        // log 由 AttemptMove 統一處理（含 AP 消耗）→ 此處只更新 UI
         EmitSignal(SignalName.PlayerPositionChanged, newRow, newCol);
         UpdateAllTiles();
     }
@@ -344,13 +397,15 @@ public partial class MainMapRenderer : Control
                     _pendingMoveTarget = (row, col);
                     if (_moveConfirm != null)
                     {
-                        // 標題塞進 dialog_text 開頭，避免 Godot 內建標題列跑到金邊框外
-                        _moveConfirm.DialogText = $"【 確認移動 】\n\n移動到地塊 ({row}, {col}) ？";
+                        // AP 預估提示
+                        int apCost = _worldMap.FirstMoveUsedThisTurn ? 1 : 0;
+                        var costNote = apCost == 0 ? "免費（本回合首次移動）" : $"{apCost} AP";
+                        _moveConfirm.DialogText = $"【 確認移動 】\n\n移動到地塊 ({row}, {col}) ？\n消耗：{costNote}";
                         _moveConfirm.PopupCentered();
                     }
                     else
                     {
-                        _worldMap.TryMovePlayerTo(row, col);
+                        AttemptMove(row, col);
                     }
                 }
                 else
@@ -386,24 +441,41 @@ public partial class MainMapRenderer : Control
 
     private void OnRestSelected()
     {
+        if (_worldMap.Ap <= 0)
+        {
+            AppendLog("AP 為 0，無法休息（休息需消耗 AP 換 HP）。");
+            return;
+        }
         if (_worldMap.Hp >= _worldMap.HpMax)
         {
             AppendLog("HP 已滿，無法休息。");
             return;
         }
-        _worldMap.Rest();
-        AppendLog($"休息：HP +1 → {_worldMap.Hp}/{_worldMap.HpMax}");
+        var result = _worldMap.Rest();
+        AppendLog($"休息：消耗 {result.ApSpent} AP → 回 {result.HpGained} HP（{_worldMap.Hp}/{_worldMap.HpMax}）");
     }
 
     private void OnObserveSelected()
     {
-        var roll = _dice.Roll2d6();
-        var total = roll.Total + DemoSkill;
-        var success = total >= ObserveTn;
-        var marker = roll.IsDouble6 ? " ★雙6" : roll.IsDouble1 ? " ☠雙1" : "";
+        // AP 不足檢查（首次免費，之後 2 AP）
+        int needed = _worldMap.FirstObserveUsedThisTurn ? 2 : 0;
+        if (_worldMap.Ap < needed)
+        {
+            AppendLog($"觀察 AP 不足（需 {needed}，現有 {_worldMap.Ap}）。本回合首次觀察免費，之後每次 2 AP。");
+            return;
+        }
+        var r = _worldMap.Observe(_rollProvider, DemoSkill);
+        if (!r.Performed)
+        {
+            AppendLog("觀察失敗（內部檢查未通過）。");
+            return;
+        }
+        var marker = r.IsDouble6 ? " ★雙6" : r.IsDouble1 ? " ☠雙1" : "";
+        var total = r.D1 + r.D2 + r.SkillBonus;
+        var costStr = needed == 0 ? "免費" : $"{needed} AP";
         AppendLog(
-            $"觀察：2d6({roll.Total})+Skill({DemoSkill}) = {total} vs TN={ObserveTn} → "
-            + (success ? "成功" : "失敗") + marker);
+            $"觀察（{costStr}）：2d6({r.D1 + r.D2})+Skill({r.SkillBonus}) = {total} vs TN={r.Tn} → "
+            + (r.Success ? "成功" : "失敗") + marker);
     }
 
     private void OnTalkSelected() => AppendLog("對話：這個地塊沒有可對話對象。");
@@ -412,9 +484,31 @@ public partial class MainMapRenderer : Control
     {
         if (_pendingMoveTarget is { } target)
         {
-            _worldMap.TryMovePlayerTo(target.Row, target.Col);
+            AttemptMove(target.Row, target.Col);
         }
         _pendingMoveTarget = null;
+    }
+
+    private void AttemptMove(int row, int col)
+    {
+        var (oldRow, oldCol) = _worldMap.PlayerPos;
+        var apBefore = _worldMap.Ap;
+        var result = _worldMap.TryMovePlayerTo(row, col);
+        switch (result)
+        {
+            case MovePlayerResult.NotEnoughAp:
+                AppendLog($"AP 不足，無法移動到 ({row},{col})。本回合首次移動免費，之後每格 1 AP。");
+                _worldMap.CancelMoveMode();
+                break;
+            case MovePlayerResult.IllegalTarget:
+                AppendLog($"({row},{col}) 非合法移動目標。");
+                break;
+            case MovePlayerResult.Ok:
+                var apCost = apBefore - _worldMap.Ap;
+                var costStr = apCost == 0 ? "免費" : $"-{apCost} AP";
+                AppendLog($"玩家移動：({oldRow},{oldCol}) → ({row},{col})（{costStr}，剩 {_worldMap.Ap}/{WorldMap.ApMax} AP）");
+                break;
+        }
     }
 
     private void OnMoveCanceled()
@@ -488,11 +582,27 @@ public partial class MainMapRenderer : Control
         };
         EmitSignal(SignalName.ModeChangedExt, modeLabel);
         EmitSignal(SignalName.HpChangedExt, _worldMap.Hp, _worldMap.HpMax);
+        // Task 6 額外推送
+        EmitSignal(SignalName.TurnChangedExt, _worldMap.Turn, WorldMap.TurnLimit);
+        EmitSignal(SignalName.ApChangedExt, _worldMap.Ap, WorldMap.ApMax);
+        EmitSignal(SignalName.HandChangedExt, _worldMap.HandSize, WorldMap.HandSizeMax);
     }
 
     private void AppendLog(string line)
     {
         EmitSignal(SignalName.LogAppended, line);
         EmitHudSignals();
+    }
+}
+
+/// <summary>把 IDiceService 包成 WorldMap.IRollProvider，避免 core/ 直接依賴 SeededDiceService。</summary>
+internal sealed class DiceServiceRollProvider : IRollProvider
+{
+    private readonly IDiceService _dice;
+    public DiceServiceRollProvider(IDiceService dice) { _dice = dice; }
+    public (int D1, int D2) Roll2d6()
+    {
+        var r = _dice.Roll2d6();
+        return (r.D1, r.D2);
     }
 }

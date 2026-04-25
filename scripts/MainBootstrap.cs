@@ -59,9 +59,12 @@ public partial class MainBootstrap : Control
         {
             mainMap.PlayerPositionChanged += topBar.OnPlayerPositionChanged;
             mainMap.ModeChangedExt += topBar.OnModeChanged;
+            mainMap.TurnChangedExt += topBar.OnTurnChanged;
+            mainMap.ApChangedExt += topBar.OnApChanged;
+            mainMap.HandChangedExt += topBar.OnHandChanged;
             // TopBar 按鈕反向觸發 MainMap
             topBar.DrawTilePressed += mainMap.RequestDrawTile;
-            topBar.EndTurnPressed += () => GD.Print("[MainBootstrap] EndTurn 按下（待 Task 6 接回合系統）");
+            topBar.EndTurnPressed += mainMap.RequestAdvanceTurn; // Task 6：真正推進回合
             topBar.OptionsPressed += () => GD.Print("[MainBootstrap] Options 按下（待後續實作）");
             topBar.VictoryConditionsPressed += () => GD.Print("[MainBootstrap] VictoryConditions 按下（待後續實作）");
         }
