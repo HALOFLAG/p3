@@ -36,6 +36,8 @@ public partial class EventResolutionDialog : AcceptDialog
     private Label? _outcomeNarrativeLabel;
     private Button? _rollButton;
     private Button? _confirmButton;
+    private PanelContainer? _companionHintBox;
+    private Label? _companionHintLabel;
 
     public override void _Ready()
     {
@@ -62,6 +64,15 @@ public partial class EventResolutionDialog : AcceptDialog
         _narrativeLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         _narrativeLabel.CustomMinimumSize = new Vector2(480, 80);
         narrativeBox.AddChild(_narrativeLabel);
+
+        // === 夥伴提示（stub）===
+        _companionHintBox = MakePanel(Palette.WithAlpha(Palette.Brown, 0.18f), Palette.Brown, accentLeft: true);
+        _companionHintBox.Visible = false;
+        root.AddChild(_companionHintBox);
+        _companionHintLabel = MakeLabel("", 11, Palette.InkLight);
+        _companionHintLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        _companionHintLabel.CustomMinimumSize = new Vector2(480, 0);
+        _companionHintBox.AddChild(_companionHintLabel);
 
         // === 骰子顯示 ===
         var diceBox = MakePanel(Palette.PaperDark, Palette.InkLight);
@@ -108,7 +119,7 @@ public partial class EventResolutionDialog : AcceptDialog
     }
 
     /// <summary>顯示對話框；填入事件並重置狀態。</summary>
-    public void Open(EventInstance instance)
+    public void Open(EventInstance instance, NpcCompanion? companion = null)
     {
         _instance = instance;
         _hasRolled = false;
@@ -122,8 +133,48 @@ public partial class EventResolutionDialog : AcceptDialog
         if (_rollButton != null) _rollButton.Disabled = false;
         if (_confirmButton != null) _confirmButton.Disabled = true;
 
+        UpdateCompanionHint(companion, instance.Card.Type);
+
         PopupCentered();
     }
+
+    private void UpdateCompanionHint(NpcCompanion? companion, EventType type)
+    {
+        if (_companionHintBox is null || _companionHintLabel is null) return;
+        if (companion is null)
+        {
+            _companionHintBox.Visible = false;
+            return;
+        }
+        var scene = SceneFromEventType(type);
+        string? hint = null;
+        foreach (var resp in companion.SceneResponses)
+        {
+            if (string.Equals(resp.Scene, scene, System.StringComparison.OrdinalIgnoreCase))
+            {
+                hint = resp.Text;
+                break;
+            }
+        }
+        if (string.IsNullOrEmpty(hint) && !string.IsNullOrEmpty(companion.Personality))
+            hint = companion.Personality;
+        if (string.IsNullOrEmpty(hint))
+        {
+            _companionHintBox.Visible = false;
+            return;
+        }
+        _companionHintLabel.Text = $"｛{companion.Name}｝{hint}";
+        _companionHintBox.Visible = true;
+    }
+
+    private static string SceneFromEventType(EventType t) => t switch
+    {
+        EventType.Exploration => "exploration",
+        EventType.Negotiation => "negotiation",
+        EventType.Battle => "battle",
+        EventType.Special => "special",
+        _ => "default",
+    };
 
     private void OnRollPressed()
     {

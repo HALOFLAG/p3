@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CardNarrative.Core.Map;
 using Godot;
 using HauntedManor.Scripts.Theme;
 
@@ -9,8 +10,11 @@ namespace HauntedManor.Scripts.Ui;
 /// </summary>
 public partial class RightPanel : PanelContainer
 {
-    private Label? _nextTopLabel;
-    private Label? _nextSecondLabel;
+    // Slot 1：未持有時顯示「下一張」（deck 頂端）；持有時顯示「持有」+ 高亮
+    private TilePreviewCard? _slot1Card;
+    private Label? _slot1TitleLabel;
+    private TilePreviewCard? _slot2Card;
+    private TilePreviewCard? _slot3Card;
     private Label? _deckRemainingLabel;
     private RichTextLabel? _logText;
 
@@ -61,15 +65,35 @@ public partial class RightPanel : PanelContainer
         BuildTurnLog(logBox);
     }
 
-    public void OnDeckStatusChanged(int remaining, string heldTerrain, string previewTop, string previewSecond)
+    public void OnDeckStatusChanged(int remaining, string heldTerrain, string previewTop, string previewSecond, string previewThird)
     {
-        if (_nextTopLabel != null)
-            _nextTopLabel.Text = string.IsNullOrEmpty(previewTop) ? "—" : previewTop;
-        if (_nextSecondLabel != null)
-            _nextSecondLabel.Text = string.IsNullOrEmpty(previewSecond) ? "—" : previewSecond;
+        var held = ParseTerrain(heldTerrain);
+        if (held is { } heldTile)
+        {
+            // 持有中：slot1 = 持有（高亮 + 「持有」）；slot2 = deck 頂；slot3 = deck 第 2
+            _slot1Card?.SetTerrain(heldTile);
+            _slot1Card?.SetHighlighted(true);
+            if (_slot1TitleLabel != null) _slot1TitleLabel.Text = "持有";
+            _slot2Card?.SetTerrain(ParseTerrain(previewTop));
+            _slot3Card?.SetTerrain(ParseTerrain(previewSecond));
+        }
+        else
+        {
+            // 待命：slot1 = 下一張（無高亮）；slot2 = 第 2 張；slot3 = 第 3 張
+            _slot1Card?.SetTerrain(ParseTerrain(previewTop));
+            _slot1Card?.SetHighlighted(false);
+            if (_slot1TitleLabel != null) _slot1TitleLabel.Text = "下一張";
+            _slot2Card?.SetTerrain(ParseTerrain(previewSecond));
+            _slot3Card?.SetTerrain(ParseTerrain(previewThird));
+        }
         if (_deckRemainingLabel != null)
-            _deckRemainingLabel.Text = $"剩餘 {remaining} 張"
-                + (string.IsNullOrEmpty(heldTerrain) ? "" : $"  /  持有: {heldTerrain}");
+            _deckRemainingLabel.Text = $"剩餘 {remaining} 張";
+    }
+
+    private static MapTerrain? ParseTerrain(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return null;
+        return System.Enum.TryParse<MapTerrain>(s, out var t) ? t : null;
     }
 
     public void OnLogAppended(string line)
@@ -92,35 +116,25 @@ public partial class RightPanel : PanelContainer
         var row = new HBoxContainer();
         row.AddThemeConstantOverride("separation", 8);
         v.AddChild(row);
-        row.AddChild(MakeTilePreview("NEXT", out _nextTopLabel));
-        row.AddChild(MakeTilePreview("第 2", out _nextSecondLabel));
+        // Slot 1：未持有 → 「下一張」；持有時切「持有」+ 高亮（OnDeckStatusChanged 內處理）
+        row.AddChild(MakePreviewSlot("下一張", out _slot1Card, out _slot1TitleLabel));
+        row.AddChild(MakePreviewSlot("第 2 張", out _slot2Card, out _));
+        row.AddChild(MakePreviewSlot("第 3 張", out _slot3Card, out _));
 
         _deckRemainingLabel = MakeColoredLabel("剩餘 — 張", 10, Palette.OrnamentInk);
         v.AddChild(_deckRemainingLabel);
     }
 
-    private static PanelContainer MakeTilePreview(string title, out Label valueLabel)
+    private static VBoxContainer MakePreviewSlot(string title, out TilePreviewCard card, out Label titleLabel)
     {
-        var p = new PanelContainer { CustomMinimumSize = new Vector2(80, 80) };
-        p.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = Palette.Paper,
-            BorderColor = Palette.Gold,
-            BorderWidthLeft = 1, BorderWidthRight = 1,
-            BorderWidthTop = 1, BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 2, CornerRadiusTopRight = 2,
-            CornerRadiusBottomLeft = 2, CornerRadiusBottomRight = 2,
-        });
         var v = new VBoxContainer();
-        v.Alignment = BoxContainer.AlignmentMode.Center;
-        p.AddChild(v);
-        var t = MakeColoredLabel(title, 9, Palette.OrnamentInk);
-        t.HorizontalAlignment = HorizontalAlignment.Center;
-        v.AddChild(t);
-        valueLabel = MakeColoredLabel("—", 14, Palette.Ink);
-        valueLabel.HorizontalAlignment = HorizontalAlignment.Center;
-        v.AddChild(valueLabel);
-        return p;
+        v.AddThemeConstantOverride("separation", 2);
+        titleLabel = MakeColoredLabel(title, 9, Palette.OrnamentInk);
+        titleLabel.HorizontalAlignment = HorizontalAlignment.Center;
+        v.AddChild(titleLabel);
+        card = new TilePreviewCard();
+        v.AddChild(card);
+        return v;
     }
 
     private void BuildTurnLog(MarginContainer parent)

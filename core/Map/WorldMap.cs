@@ -42,6 +42,11 @@ public sealed class WorldMap
     private readonly List<string> _backpack = new();
     private readonly Dictionary<string, Equipment> _equipmentCatalog = new();
 
+    // === Character / Companion 卡片（驅動 LeftPanel 主角區 + 夥伴區） ===
+    private Character? _character;
+    private NpcCompanion? _companion;
+    private int _companionHp;
+
     public (int Row, int Col) PlayerPos { get; private set; } = (InitialPlayerRow, InitialPlayerCol);
     public (float Row, float Col) CameraOffset { get; private set; } = (0f, 0f);
 
@@ -49,7 +54,14 @@ public sealed class WorldMap
     public MapTerrain? HeldTile { get; private set; }
 
     public int Hp { get; private set; } = 12;
-    public int HpMax { get; init; } = 12;
+    public int HpMax { get; private set; } = 12;
+
+    /// <summary>角色卡目前佔住的裝備槽位（規格書 §3.4.3 中央格 → §3-7）。預設 Head。</summary>
+    public EquipmentSlot CharacterCardSlot { get; private set; } = EquipmentSlot.Head;
+    public Character? Character => _character;
+    public NpcCompanion? Companion => _companion;
+    public int CompanionHp => _companionHp;
+    public int CompanionHpMax => _companion?.Hp ?? 0;
 
     public int Turn { get; private set; } = 1;
     public int Ap { get; private set; } = ApMax;
@@ -70,7 +82,7 @@ public sealed class WorldMap
     /// <summary>裝備目錄（id → Equipment）。</summary>
     public IReadOnlyDictionary<string, Equipment> EquipmentCatalog => _equipmentCatalog;
 
-    public IReadOnlyList<MapTerrain> NextTilePreview => _tileDeck.Take(2).ToArray();
+    public IReadOnlyList<MapTerrain> NextTilePreview => _tileDeck.Take(3).ToArray();
     public int RemainingTiles => _tileDeck.Count;
 
     public event Action<int, int>? TileChanged;
@@ -92,6 +104,12 @@ public sealed class WorldMap
 
     /// <summary>裝備配置變更（任何 slot 或 backpack 變動）。</summary>
     public event Action? EquipmentChanged;
+
+    /// <summary>角色卡載入 / 切換、角色 HP 變更時觸發；LeftPanel 主角區訂閱。</summary>
+    public event Action? CharacterChanged;
+
+    /// <summary>夥伴卡載入 / 切換、夥伴 HP 變更時觸發；LeftPanel 夥伴區訂閱。</summary>
+    public event Action? CompanionChanged;
 
     public WorldMap() : this(new SystemRandomProvider()) { }
 
@@ -148,8 +166,58 @@ public sealed class WorldMap
         EquipmentChanged?.Invoke();
     }
 
+    /// <summary>載入角色卡：覆蓋 HpMax / Hp / Character；CharacterCardSlot 維持當前值（預設 Head）。</summary>
+    public void LoadCharacter(Character character)
+    {
+        _character = character;
+        HpMax = character.HpMax;
+        Hp = character.HpMax;
+        CharacterChanged?.Invoke();
+        HpChanged?.Invoke(Hp);
+    }
+
+    /// <summary>載入夥伴卡（單一夥伴；多夥伴未來擴充）。</summary>
+    public void LoadCompanion(NpcCompanion? companion)
+    {
+        _companion = companion;
+        _companionHp = companion?.Hp ?? 0;
+        CompanionChanged?.Invoke();
+    }
+
+    /// <summary>角色卡 → 主槽。背包永遠拒絕（由 UI 端阻擋；此處不接背包輸入）。</summary>
+    public MoveEquipmentResult MoveCharacterCardToSlot(EquipmentSlot target)
+    {
+        var (result, newSlot) = EquipmentManager.MoveCharacterCardSlotToSlot(
+            _equipped, _equipmentCatalog, CharacterCardSlot, target);
+        if (result == MoveEquipmentResult.Ok)
+        {
+            CharacterCardSlot = newSlot;
+            EquipmentChanged?.Invoke();
+            CharacterChanged?.Invoke();
+        }
+        return result;
+    }
+
+    /// <summary>裝備從另一主槽放進角色卡所在槽：觸發角色卡與該裝備互換。</summary>
+    public MoveEquipmentResult SwapCharacterWithEquipmentSlot(EquipmentSlot equipmentSourceSlot)
+    {
+        var (result, newSlot) = EquipmentManager.SwapCharacterWithEquipmentSlot(
+            _equipped, CharacterCardSlot, equipmentSourceSlot);
+        if (result == MoveEquipmentResult.Ok)
+        {
+            CharacterCardSlot = newSlot;
+            EquipmentChanged?.Invoke();
+            CharacterChanged?.Invoke();
+        }
+        return result;
+    }
+
     public MoveEquipmentResult MoveEquipmentSlotToSlot(EquipmentSlot from, EquipmentSlot to)
     {
+        // 阻擋：若目標槽是角色卡所在槽，要走 SwapCharacterWithEquipmentSlot 路徑。
+        if (to == CharacterCardSlot) return SwapCharacterWithEquipmentSlot(from);
+        // 阻擋：來源槽是角色卡所在槽 → 不能用裝備搬法（角色卡走 MoveCharacterCardToSlot）。
+        if (from == CharacterCardSlot) return MoveEquipmentResult.SourceEmpty;
         var result = EquipmentManager.MoveSlotToSlot(_equipped, _equipmentCatalog, from, to);
         if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
         return result;
@@ -157,6 +225,8 @@ public sealed class WorldMap
 
     public MoveEquipmentResult MoveEquipmentSlotToBackpack(EquipmentSlot from)
     {
+        // 角色卡所在槽不能透過裝備路徑搬到背包（角色卡禁背包）。
+        if (from == CharacterCardSlot) return MoveEquipmentResult.IncompatibleSlot;
         var result = EquipmentManager.MoveSlotToBackpack(_equipped, _backpack, from);
         if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
         return result;
@@ -164,6 +234,8 @@ public sealed class WorldMap
 
     public MoveEquipmentResult MoveEquipmentBackpackToSlot(int backpackIndex, EquipmentSlot to)
     {
+        // 目標槽是角色卡所在槽 → 角色卡需移到背包，但角色卡禁背包 → 拒絕。
+        if (to == CharacterCardSlot) return MoveEquipmentResult.IncompatibleSlot;
         var result = EquipmentManager.MoveBackpackToSlot(
             _equipped, _backpack, _equipmentCatalog, backpackIndex, to);
         if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();

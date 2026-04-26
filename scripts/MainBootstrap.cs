@@ -108,6 +108,29 @@ public partial class MainBootstrap : Control
                 mainMap.WorldMap.Backpack,
                 mainMap.WorldMap.EquipmentCatalog);
 
+            // 主角區：角色 / HP / 角色卡所在槽變更 → 推主角資料 + 重繪角色卡所在格
+            mainMap.CharacterChangedExt += () =>
+            {
+                if (mainMap.WorldMap.Character is not Character c) return;
+                var total = mainMap.GetHeroTotalStats();
+                leftPanel.OnCharacterChanged(
+                    c,
+                    mainMap.WorldMap.Hp,
+                    mainMap.WorldMap.HpMax,
+                    total,
+                    mainMap.WorldMap.CharacterCardSlot);
+                // 角色卡格也要在裝備格內顯示
+                leftPanel.OnEquipmentChanged(
+                    mainMap.WorldMap.Equipped,
+                    mainMap.WorldMap.Backpack,
+                    mainMap.WorldMap.EquipmentCatalog);
+            };
+
+            mainMap.CompanionChangedExt += () => leftPanel.OnCompanionChanged(
+                mainMap.WorldMap.Companion,
+                mainMap.WorldMap.CompanionHp,
+                mainMap.WorldMap.CompanionHpMax);
+
             // 背包展開時把 slots 1, 2 + frame reparent 到此 overlay，
             // 避開父層 grid cell 的 hit-test rect 限制（讓 drag 在展開區域可用）
             var backpackOverlay = new Control
@@ -203,6 +226,18 @@ public partial class MainBootstrap : Control
                 var initialBackpack = equipmentCatalog.Values.Take(3).Select(e => e.Id).ToList();
                 mainMap.LoadEquipmentInventory(equipmentCatalog, initialBackpack);
                 GD.Print($"[MainBootstrap] 載入裝備目錄：{equipmentCatalog.Count} 件，初始背包 {initialBackpack.Count} 件。");
+
+                // 角色卡 + 夥伴卡：demo 角色 = scholar，夥伴 = old-priest（若不存在 fallback 第一個）
+                Character? demoCharacter = success.Module.Characters.GetValueOrDefault("scholar")
+                    ?? success.Module.Characters.Values.FirstOrDefault();
+                NpcCompanion? demoCompanion = success.Module.NpcCompanions.GetValueOrDefault("old-priest")
+                    ?? success.Module.NpcCompanions.Values.FirstOrDefault();
+                if (demoCharacter is not null)
+                {
+                    mainMap.LoadCharacterAndCompanion(demoCharacter, demoCompanion, success.Module);
+                    GD.Print($"[MainBootstrap] 載入角色卡：{demoCharacter.Name}（HP {demoCharacter.HpMax}）"
+                             + (demoCompanion is null ? "（無夥伴）" : $"，夥伴：{demoCompanion.Name}"));
+                }
             }
             else if (result is ModuleLoadResult.Failure fail)
             {
@@ -280,7 +315,7 @@ public partial class MainBootstrap : Control
             GD.Print($"[MainBootstrap] ORBIT '{eventId}' 為 {inst.Class}，尚未可結算。");
             return;
         }
-        _eventDialog.Open(inst);
+        _eventDialog.Open(inst, _mainMap?.WorldMap.Companion);
     }
 
     /// <summary>結算完成 → 從 ORBIT 移除；後續接 GameState 後可在此套用 outcome.Effects。</summary>

@@ -44,6 +44,14 @@ public enum EquipmentSlot
     AccessoryA,
     AccessoryB,
     Utility,
+    /// <summary>
+    /// Legacy sentinel: prior version stored CharacterCardSlot=Character to mean
+    /// "character card lives in a non-equipment slot." Current design places the
+    /// character card directly into one of the visible primary slots (default Head).
+    /// Retained so older saves deserialize without error; PlayerState should never
+    /// emit this value going forward.
+    /// </summary>
+    [Obsolete("Character card now occupies a regular primary slot; default to Head.")]
     Character
 }
 

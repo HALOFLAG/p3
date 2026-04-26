@@ -27,6 +27,25 @@ public partial class MainMapRenderer : Control
     private Node2D? _tileLayer;
     private ProjectionParams _projection;
     private ParallaxSceneController? _parallaxScene; // 任務 8 場景立繪
+    private TextureRect? _ghostTile; // MapExpand 模式跟隨滑鼠的 ghost preview
+    private const int GhostSize = 100; // 與 RightPanel TilePreviewCard 同尺寸
+
+    // 攝影機平移動畫：在「rel 座標」層補間（X=row offset, Y=col offset，皆為 tile 單位的小數）。
+    // 動畫期間從 (newRow-oldRow, newCol-oldCol) 補間回 Vector2.Zero — 透視會自動依小數深度重投影，
+    // 不像「螢幕像素 offset」那樣忽略 perspective 非線性，所以滑動感才會平穩。
+    private Vector2 _cameraSubTileOffset = Vector2.Zero;
+    private Tween? _cameraTween;
+    private const float CameraMoveDurationSec = 0.25f;
+
+    private static readonly System.Collections.Generic.Dictionary<MapTerrain, string> GhostTexturePaths = new()
+    {
+        { MapTerrain.Forest,   "res://art/tiles/forest.png"   },
+        { MapTerrain.Path,     "res://art/tiles/path.png"     },
+        { MapTerrain.Grass,    "res://art/tiles/grass.png"    },
+        { MapTerrain.Water,    "res://art/tiles/water.png"    },
+        { MapTerrain.Mountain, "res://art/tiles/mountain.png" },
+        { MapTerrain.Building, "res://art/tiles/building.png" },
+    };
 
     // Popup / dialog
     private ActionTriggerPopup? _popup;
@@ -40,6 +59,49 @@ public partial class MainMapRenderer : Control
 
     public WorldMap WorldMap => _worldMap;
 
+    /// <summary>當前載入的模組（給 LeftPanel 計算 4 屬性總值與裝備加值查表用）。</summary>
+    public CardNarrative.Core.Models.Module? Module { get; private set; }
+
+    public void LoadCharacterAndCompanion(
+        Character character,
+        NpcCompanion? companion,
+        CardNarrative.Core.Models.Module module)
+    {
+        Module = module;
+        _worldMap.LoadCharacter(character);
+        _worldMap.LoadCompanion(companion);
+    }
+
+    /// <summary>主角總屬性 = 角色 base + 裝備加總（跳過角色卡所在槽）。</summary>
+    public StatBlock GetHeroTotalStats()
+    {
+        var c = _worldMap.Character;
+        if (c is null) return new StatBlock(0, 0, 0, 0);
+        var bonus = AggregateEquipmentStats();
+        return new StatBlock(
+            c.Stats.Power + bonus.Power,
+            c.Stats.Social + bonus.Social,
+            c.Stats.Skill + bonus.Skill,
+            c.Stats.Intellect + bonus.Intellect);
+    }
+
+    private StatBlock AggregateEquipmentStats()
+    {
+        int p = 0, s = 0, sk = 0, i = 0;
+        foreach (var (slot, id) in _worldMap.Equipped)
+        {
+            if (slot == _worldMap.CharacterCardSlot) continue;
+            if (id is null) continue;
+            if (!_worldMap.EquipmentCatalog.TryGetValue(id, out var eq)) continue;
+            if (eq.StatBonuses is null) continue;
+            p += eq.StatBonuses.Power;
+            s += eq.StatBonuses.Social;
+            sk += eq.StatBonuses.Skill;
+            i += eq.StatBonuses.Intellect;
+        }
+        return new StatBlock(p, s, sk, i);
+    }
+
     public MainMapRenderer()
     {
         _rollProvider = new DiceServiceRollProvider(_dice);
@@ -48,7 +110,7 @@ public partial class MainMapRenderer : Control
     // === 對外 Signals（取代內嵌 HUD）===
 
     /// <summary>牌堆狀態變更：發送 (剩餘張數, 持有, NEXT[0], NEXT[1])。空字串代表 -。</summary>
-    [Signal] public delegate void DeckStatusChangedEventHandler(int remaining, string heldTerrain, string previewTop, string previewSecond);
+    [Signal] public delegate void DeckStatusChangedEventHandler(int remaining, string heldTerrain, string previewTop, string previewSecond, string previewThird);
 
     /// <summary>互動模式變更（中文標籤）。</summary>
     [Signal] public delegate void ModeChangedExtEventHandler(string modeLabel);
@@ -82,6 +144,12 @@ public partial class MainMapRenderer : Control
 
     /// <summary>裝備配置變更（任何 slot 或 backpack 變動）。LeftPanel 訂閱以重繪 3×3。</summary>
     [Signal] public delegate void EquipmentChangedExtEventHandler();
+
+    /// <summary>角色卡 / 角色 HP / 角色卡所在槽位變更。LeftPanel 訂閱重繪主角區 + 角色卡所在格。</summary>
+    [Signal] public delegate void CharacterChangedExtEventHandler();
+
+    /// <summary>夥伴卡 / 夥伴 HP 變更。LeftPanel 訂閱重繪夥伴區。</summary>
+    [Signal] public delegate void CompanionChangedExtEventHandler();
 
     public override void _Ready()
     {
@@ -139,6 +207,21 @@ public partial class MainMapRenderer : Control
         _parallaxScene = new ParallaxSceneController { Name = "ParallaxScene" };
         AddChild(_parallaxScene);
         _parallaxScene.ZIndex = 5; // 蓋過 tile，但低於 popup/dialog
+
+        // MapExpand 模式滑鼠跟隨 ghost：顯示 HeldTile PNG，跟著游標移動
+        _ghostTile = new TextureRect
+        {
+            Name = "GhostTile",
+            CustomMinimumSize = new Vector2(GhostSize, GhostSize),
+            Size = new Vector2(GhostSize, GhostSize),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Modulate = new Color(1, 1, 1, 0.85f),
+            ZIndex = 20, // 蓋過所有東西
+        };
+        AddChild(_ghostTile);
 
         // 視框尺寸可能還是 0（若被父 container 排版尚未完成）→ 等下一個 frame 重算
         CallDeferred(nameof(InitialLayout));
@@ -204,6 +287,13 @@ public partial class MainMapRenderer : Control
 
     public override void _GuiInput(InputEvent @event)
     {
+        // MapExpand 時讓 ghost tile 跟隨滑鼠
+        if (_ghostTile is { Visible: true } && @event is InputEventMouseMotion motion)
+        {
+            _ghostTile.Position = new Vector2(motion.Position.X - GhostSize / 2f, motion.Position.Y - GhostSize / 2f);
+            return;
+        }
+
         if (@event is not InputEventMouseButton { Pressed: true } mb) return;
 
         if (mb.ButtonIndex == MouseButton.Left)
@@ -224,6 +314,13 @@ public partial class MainMapRenderer : Control
             if (tile.HasValue)
             {
                 OnTileClicked(tile.Value.row, tile.Value.col);
+                AcceptEvent();
+            }
+            else if (_worldMap.Mode == InteractionMode.MapExpand)
+            {
+                // 點擊空白區（非任何地塊）→ 取消放置
+                _worldMap.CancelMapExpand();
+                AppendLog("已取消放置（點擊空白區）。");
                 AcceptEvent();
             }
         }
@@ -329,11 +426,20 @@ public partial class MainMapRenderer : Control
         AppendLog($"載入裝備目錄（{catalog.Count} 件，背包 {_worldMap.Backpack.Count}/{EquipmentManager.BackpackMax}）");
     }
 
-    /// <summary>外部觸發裝備移動（LeftPanel drag-drop → 此處）。</summary>
+    /// <summary>外部觸發裝備移動（LeftPanel drag-drop → 此處）。支援角色卡來源 srcKind="character"。</summary>
     public void RequestMoveEquipment(string srcKind, int srcIdx, string tgtKind, int tgtIdx)
     {
         MoveEquipmentResult result;
-        if (srcKind == "primary" && tgtKind == "primary")
+        if (srcKind == "character")
+        {
+            if (tgtKind != "primary")
+            {
+                AppendLog("角色卡只能放在主槽，不可入背包。");
+                return;
+            }
+            result = _worldMap.MoveCharacterCardToSlot((EquipmentSlot)tgtIdx);
+        }
+        else if (srcKind == "primary" && tgtKind == "primary")
         {
             result = _worldMap.MoveEquipmentSlotToSlot((EquipmentSlot)srcIdx, (EquipmentSlot)tgtIdx);
         }
@@ -405,7 +511,7 @@ public partial class MainMapRenderer : Control
     {
         _worldMap.TileChanged += OnTileChanged;
         _worldMap.PlayerMoved += OnPlayerMoved;
-        _worldMap.CameraOffsetChanged += UpdateAllTiles;
+        _worldMap.CameraOffsetChanged += OnWorldCameraOffsetChanged;
         _worldMap.ModeChanged += OnModeChanged;
         _worldMap.TilePlaced += OnTilePlaced;
         _worldMap.HpChanged += OnHpChanged;
@@ -415,13 +521,15 @@ public partial class MainMapRenderer : Control
         _worldMap.HandChanged += OnHandChanged;
         _worldMap.CompanionSubstituted += OnCompanionSubstituted;
         _worldMap.EquipmentChanged += OnEquipmentChanged;
+        _worldMap.CharacterChanged += OnCharacterChangedInternal;
+        _worldMap.CompanionChanged += OnCompanionChangedInternal;
     }
 
     private void UnsubscribeWorldMap()
     {
         _worldMap.TileChanged -= OnTileChanged;
         _worldMap.PlayerMoved -= OnPlayerMoved;
-        _worldMap.CameraOffsetChanged -= UpdateAllTiles;
+        _worldMap.CameraOffsetChanged -= OnWorldCameraOffsetChanged;
         _worldMap.ModeChanged -= OnModeChanged;
         _worldMap.TilePlaced -= OnTilePlaced;
         _worldMap.HpChanged -= OnHpChanged;
@@ -431,6 +539,18 @@ public partial class MainMapRenderer : Control
         _worldMap.HandChanged -= OnHandChanged;
         _worldMap.CompanionSubstituted -= OnCompanionSubstituted;
         _worldMap.EquipmentChanged -= OnEquipmentChanged;
+        _worldMap.CharacterChanged -= OnCharacterChangedInternal;
+        _worldMap.CompanionChanged -= OnCompanionChangedInternal;
+    }
+
+    private void OnCharacterChangedInternal()
+    {
+        EmitSignal(SignalName.CharacterChangedExt);
+    }
+
+    private void OnCompanionChangedInternal()
+    {
+        EmitSignal(SignalName.CompanionChangedExt);
     }
 
     private void OnEquipmentChanged()
@@ -483,6 +603,51 @@ public partial class MainMapRenderer : Control
     {
         // log 由 AttemptMove 統一處理（含 AP 消耗）→ 此處只更新 UI
         EmitSignal(SignalName.PlayerPositionChanged, newRow, newCol);
+        AnimateCameraToPlayer(oldRow, oldCol, newRow, newCol);
+    }
+
+    /// <summary>
+    /// 玩家移動後的攝影機平移動畫：在 rel 座標層補間 — 起始把所有 tile 的 rel 偏移
+    /// (newRow-oldRow, newCol-oldCol) 個 tile，視覺上即是「舊版面」；補間至 0 即「新版面」。
+    /// 因為 ProjectQuad 接受 float rel，每一 frame 都重新透視投影，遠近列各自依 perspective
+    /// 換算位置，所以視覺是平滑的攝影機 pan 而非生硬的螢幕線性位移。
+    /// </summary>
+    private void AnimateCameraToPlayer(int oldRow, int oldCol, int newRow, int newCol)
+    {
+        // 取消任何進行中的攝影機 tween，避免快速連續移動時動畫疊加。
+        _cameraTween?.Kill();
+
+        // 起始 sub-tile offset：把 NEW 版面的 rel 加上這個量，等同回到 OLD 版面的 rel
+        // （因為 relOld = relNew + (newRow - oldRow)；對所有 tile 都成立）。
+        var startOffset = new Vector2(newRow - oldRow, newCol - oldCol);
+
+        _cameraSubTileOffset = startOffset;
+        UpdateAllTiles();
+
+        _cameraTween = CreateTween();
+        _cameraTween.TweenMethod(
+                Callable.From<Vector2>(SetCameraSubTileOffset),
+                startOffset,
+                Vector2.Zero,
+                CameraMoveDurationSec)
+            .SetTrans(Tween.TransitionType.Cubic)
+            .SetEase(Tween.EaseType.Out);
+    }
+
+    private void SetCameraSubTileOffset(Vector2 v)
+    {
+        _cameraSubTileOffset = v;
+        UpdateAllTiles();
+    }
+
+    /// <summary>
+    /// CameraOffsetChanged（Reset 鍵 / SetCameraOffset）→ 立即跳；殺掉動畫中 tween，
+    /// 把 sub-tile offset 歸零，再走原本 UpdateAllTiles。
+    /// </summary>
+    private void OnWorldCameraOffsetChanged()
+    {
+        _cameraTween?.Kill();
+        _cameraSubTileOffset = Vector2.Zero;
         UpdateAllTiles();
     }
 
@@ -490,6 +655,22 @@ public partial class MainMapRenderer : Control
     {
         EmitHudSignals();
         UpdateAllTiles();
+        UpdateGhostTileVisibility();
+    }
+
+    private void UpdateGhostTileVisibility()
+    {
+        if (_ghostTile == null) return;
+        bool show = _worldMap.Mode == InteractionMode.MapExpand && _worldMap.HeldTile is { } held;
+        _ghostTile.Visible = show;
+        if (show && _worldMap.HeldTile is { } t
+            && GhostTexturePaths.TryGetValue(t, out var path))
+        {
+            _ghostTile.Texture = ResourceLoader.Load<Texture2D>(path);
+            // 進入 MapExpand 即用當前游標位置擺放 ghost，避免「先看到角落 ghost 才跳到滑鼠」
+            var mousePos = GetLocalMousePosition();
+            _ghostTile.Position = new Vector2(mousePos.X - GhostSize / 2f, mousePos.Y - GhostSize / 2f);
+        }
     }
 
     private void OnTilePlaced(MapTerrain terrain, int row, int col)
@@ -515,7 +696,9 @@ public partial class MainMapRenderer : Control
                 }
                 else
                 {
-                    AppendLog($"({row},{col}) 不是合法放置區。");
+                    // 點擊不合法地塊 → 取消放置（與右鍵相同行為）
+                    _worldMap.CancelMapExpand();
+                    AppendLog($"已取消放置（點擊 ({row},{col}) 不在合法區）。");
                 }
                 break;
 
@@ -657,6 +840,10 @@ public partial class MainMapRenderer : Control
     {
         var (playerRow, playerCol) = _worldMap.PlayerPos;
         var (offsetRow, offsetCol) = _worldMap.CameraOffset;
+        // 視野上限（含小數動畫時需多容忍 0.5 避免邊緣 tile pop）
+        var halfRows = _projection.VisibleRows / 2;
+        var halfCols = _projection.VisibleCols / 2;
+        const float visibilitySlack = 0.5f;
 
         for (int r = 0; r < WorldMap.Size; r++)
         for (int c = 0; c < WorldMap.Size; c++)
@@ -665,10 +852,12 @@ public partial class MainMapRenderer : Control
             if (node is null) continue;
             var data = _worldMap.GetTile(r, c);
 
-            var relRow = (r - playerRow) - (int)Mathf.Round(offsetRow);
-            var relCol = (c - playerCol) - (int)Mathf.Round(offsetCol);
+            // 小數 rel：基底（int）+ 整數 camera offset（Reset 鍵）+ 小數攝影機補間 offset
+            var relRow = (r - playerRow) - (float)Mathf.Round(offsetRow) + _cameraSubTileOffset.X;
+            var relCol = (c - playerCol) - (float)Mathf.Round(offsetCol) + _cameraSubTileOffset.Y;
 
-            if (!Projection.IsVisible(relRow, relCol, _projection))
+            if (relRow < -halfRows - visibilitySlack || relRow > halfRows + visibilitySlack
+             || relCol < -halfCols - visibilitySlack || relCol > halfCols + visibilitySlack)
             {
                 node.Visible = false;
                 continue;
@@ -713,10 +902,15 @@ public partial class MainMapRenderer : Control
         if (_parallaxScene == null) return;
 
         var (offsetRow, offsetCol) = _worldMap.CameraOffset;
-        var playerRelRow = -(int)Mathf.Round(offsetRow);
-        var playerRelCol = -(int)Mathf.Round(offsetCol);
+        // 立繪盒 anchor = 玩家 tile（rel=0）；攝影機補間時把 sub-tile offset 套上
+        // → 立繪會跟著玩家 tile 一起在透視空間中滑動，不會與 tile 脫鉤。
+        var playerRelRow = -(float)Mathf.Round(offsetRow) + _cameraSubTileOffset.X;
+        var playerRelCol = -(float)Mathf.Round(offsetCol) + _cameraSubTileOffset.Y;
 
-        if (!Projection.IsVisible(playerRelRow, playerRelCol, _projection))
+        var halfRows = _projection.VisibleRows / 2;
+        var halfCols = _projection.VisibleCols / 2;
+        if (playerRelRow < -halfRows - 0.5f || playerRelRow > halfRows + 0.5f
+         || playerRelCol < -halfCols - 0.5f || playerRelCol > halfCols + 0.5f)
         {
             _parallaxScene.Visible = false;
             return;
@@ -750,11 +944,12 @@ public partial class MainMapRenderer : Control
         var preview = _worldMap.NextTilePreview;
         var top = preview.Count > 0 ? preview[0].ToString() : "";
         var second = preview.Count > 1 ? preview[1].ToString() : "";
+        var third = preview.Count > 2 ? preview[2].ToString() : "";
         EmitSignal(
             SignalName.DeckStatusChanged,
             _worldMap.RemainingTiles,
             _worldMap.HeldTile?.ToString() ?? "",
-            top, second);
+            top, second, third);
 
         var modeLabel = _worldMap.Mode switch
         {

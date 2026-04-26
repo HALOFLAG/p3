@@ -2,6 +2,7 @@
 // StatBlock 共四維：Power/Social/Skill/Intellect，對應事件/行動檢定。
 // StartingDeck 為開局牌庫（id 列表），Specialty 目前為顯示文字。
 // CombatAbilities 為每場戰鬥冷卻的角色專屬行動（空列表代表該角色無特殊戰鬥能力）。
+// Description / Skills 為「角色卡」UI 用：背景描述 + 主動/被動技能列。
 namespace CardNarrative.Core.Models;
 
 public sealed record StatBlock(int Power, int Social, int Skill, int Intellect);
@@ -28,4 +29,10 @@ public sealed record Character(
 )
 {
     public IReadOnlyList<CombatAbility> CombatAbilities { get; init; } = Array.Empty<CombatAbility>();
+
+    /// <summary>角色背景描述；LeftPanel 主角區或圖鑑顯示用。</summary>
+    public string Description { get; init; } = string.Empty;
+
+    /// <summary>非戰鬥技能（主動 / 被動）；戰鬥技能走 <see cref="CombatAbilities"/>。</summary>
+    public IReadOnlyList<Skill> Skills { get; init; } = Array.Empty<Skill>();
 }

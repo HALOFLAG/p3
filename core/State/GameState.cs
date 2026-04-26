@@ -45,7 +45,7 @@ public sealed class PlayerState
     public Dictionary<string, int> ActionCardUsesThisTurn { get; } = new();
     public Position Position { get; set; } = new(0, 0);
     public Dictionary<EquipmentSlot, string?> Equipment { get; } = new();
-    public EquipmentSlot CharacterCardSlot { get; set; } = EquipmentSlot.Character;
+    public EquipmentSlot CharacterCardSlot { get; set; } = EquipmentSlot.Head;
     public List<string> PendingEquipmentGrants { get; } = new();
     public string? BoundCompanionId { get; set; }
 
@@ -196,7 +196,7 @@ public sealed class GameState
                 CharacterCardSlot = characterCardSlots is not null
                                     && characterCardSlots.TryGetValue(id, out var slot)
                     ? slot
-                    : EquipmentSlot.Character
+                    : EquipmentSlot.Head
             };
             // Seed personal deck deterministically from character's StartingDeck
             var rng = new Random(unchecked(seed * 31 + playerIndex));

@@ -5,6 +5,15 @@
     "stats": { "power": 1, "social": 3, "skill": 4, "intellect": 2 },
     "hp": 12,
     "specialty": "Town: communication check +1",
+    "description": "A retired cat-burglar with a soft spot for orphans.",
+    "personality": "Sarcastic; trusts hands-on experience over book theory.",
+    "sceneResponses": [
+      { "scene": "exploration", "text": "Let me scout the corner first — these floors love trapdoors." },
+      { "scene": "negotiation", "text": "Don't oversell. Let them name the price." }
+    ],
+    "skills": [
+      { "id": "leia-active-pick", "name": "Pick Lock", "kind": "Active", "description": "Spend 1 AP to bypass a single locked obstacle without a roll." }
+    ],
     "actionPoints": 2,
     "strategyTable": [
       { "scene": "exploration",  "preferredActionTags": ["search", "perception"] },

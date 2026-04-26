@@ -37,6 +37,29 @@ public class ModuleLoaderTests
     }
 
     [Fact]
+    public void Load_ValidModule_DeserializesCharacterCardFields()
+    {
+        var module = NewLoader().Load(TestPaths.ValidModuleFolder).ModuleOrNull!;
+        var hunter = module.Characters["wild-hunter"];
+        hunter.Description.Should().NotBeNullOrEmpty();
+        hunter.Skills.Should().HaveCount(2);
+        hunter.Skills[0].Kind.Should().Be(SkillKind.Active);
+        hunter.Skills[1].Kind.Should().Be(SkillKind.Passive);
+    }
+
+    [Fact]
+    public void Load_ValidModule_DeserializesCompanionCardFields()
+    {
+        var module = NewLoader().Load(TestPaths.ValidModuleFolder).ModuleOrNull!;
+        var leia = module.NpcCompanions["companion-thief"];
+        leia.Description.Should().NotBeNullOrEmpty();
+        leia.Personality.Should().NotBeNullOrEmpty();
+        leia.SceneResponses.Should().HaveCount(2);
+        leia.SceneResponses[0].Scene.Should().Be("exploration");
+        leia.Skills.Should().HaveCount(1);
+    }
+
+    [Fact]
     public void Load_MissingManifest_ReturnsFailure()
     {
         var temp = CloneValidModuleToTemp();

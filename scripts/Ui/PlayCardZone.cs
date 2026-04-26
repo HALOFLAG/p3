@@ -33,6 +33,9 @@ public partial class PlayCardZone : Control
         // Pass：drag 事件接得到，但點擊穿透給父 MainMapRenderer 處理
         MouseFilter = MouseFilterEnum.Pass;
         SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        // 蓋過 ParallaxScene (ZIndex=5)：放置提示區與出牌後的飛卡動畫不能被立繪盒擋住。
+        // 子節點預設 ZAsRelative=true，會繼承這個 offset，所以 _dropSlot 與動畫卡都會在上層。
+        ZIndex = 10;
         _cardViewScene = ResourceLoader.Load<PackedScene>("res://scenes/ui/card_view.tscn");
         BuildDropSlot();
         LayoutSlot();

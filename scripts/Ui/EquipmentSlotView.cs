@@ -37,6 +37,9 @@ public partial class EquipmentSlotView : Control
     public string? EquippedId { get; private set; }
     public Equipment? EquippedItem { get; private set; }
 
+    /// <summary>角色卡是否佔住此格（與 EquippedItem 互斥；占住時槽不顯示裝備）。</summary>
+    public Character? CharacterCard { get; private set; }
+
     /// <summary>是否可被拖曳（由 BackpackBar 控制：摺疊時只有 top 可拖）。</summary>
     public bool IsDraggable { get; set; } = true;
 
@@ -45,6 +48,7 @@ public partial class EquipmentSlotView : Control
 
     private Panel? _bgPanel;
     private EquipmentCardView? _cardView;
+    private CharacterCardView? _characterView;
     private Panel? _hoverOverlay;
 
     public override void _Ready()
@@ -68,6 +72,12 @@ public partial class EquipmentSlotView : Control
         _cardView.Position = new Vector2(InnerPad, InnerPad);
         _cardView.Size = new Vector2(EquipmentCardView.CardWidth, EquipmentCardView.CardHeight);
         _cardView.CustomMinimumSize = new Vector2(EquipmentCardView.CardWidth, EquipmentCardView.CardHeight);
+
+        _characterView = new CharacterCardView { Visible = false };
+        AddChild(_characterView);
+        _characterView.Position = new Vector2(InnerPad, InnerPad);
+        _characterView.Size = new Vector2(CharacterCardView.CardWidth, CharacterCardView.CardHeight);
+        _characterView.CustomMinimumSize = new Vector2(CharacterCardView.CardWidth, CharacterCardView.CardHeight);
 
         // 拖曳時的白色半透明覆蓋層（蓋住整張卡）
         _hoverOverlay = new Panel { MouseFilter = MouseFilterEnum.Ignore, Visible = false };
@@ -97,12 +107,45 @@ public partial class EquipmentSlotView : Control
     {
         EquippedId = equipmentId;
         EquippedItem = item;
+        // 角色卡與裝備互斥：呼叫此方法即視為「此槽現在不是角色卡」
+        // 不能只在 item != null 才清，否則角色卡離開後舊槽會殘留 CharacterCard 引用，
+        // 造成新舊兩格同時渲染同一張角色卡。
+        CharacterCard = null;
+        Refresh();
+    }
+
+    /// <summary>把角色卡放進此格（裝備自動清空，與 SetEquipment 互斥）。</summary>
+    public void SetCharacterCard(Character? character)
+    {
+        CharacterCard = character;
+        if (character is not null)
+        {
+            EquippedId = null;
+            EquippedItem = null;
+        }
         Refresh();
     }
 
     private void Refresh()
     {
-        _cardView?.SetEquipment(EquippedItem, SlotLabel);
+        if (CharacterCard is not null)
+        {
+            if (_cardView != null) _cardView.Visible = false;
+            if (_characterView != null)
+            {
+                _characterView.Visible = true;
+                _characterView.SetCharacter(CharacterCard);
+            }
+        }
+        else
+        {
+            if (_characterView != null) _characterView.Visible = false;
+            if (_cardView != null)
+            {
+                _cardView.Visible = true;
+                _cardView.SetEquipment(EquippedItem, SlotLabel);
+            }
+        }
     }
 
     // === 拖曳 ===
@@ -110,6 +153,17 @@ public partial class EquipmentSlotView : Control
     public override Variant _GetDragData(Vector2 atPosition)
     {
         if (!IsDraggable) return default;
+        if (CharacterCard is not null && Kind == SlotKind.Primary)
+        {
+            var charData = new Godot.Collections.Dictionary
+            {
+                { "kind", "character_card" },
+                { "source_kind", "primary" },
+                { "source_slot", (int)PrimarySlot },
+            };
+            SetDragPreview(BuildCharacterDragPreview());
+            return charData;
+        }
         if (string.IsNullOrEmpty(EquippedId)) return default;
         var data = new Godot.Collections.Dictionary
         {
@@ -133,7 +187,8 @@ public partial class EquipmentSlotView : Control
     {
         if (!CanAcceptDrag(data)) return;
         var dict = data.As<Godot.Collections.Dictionary>();
-        var srcKind = dict["source_kind"].AsString();
+        var kind = dict["kind"].AsString();
+        var srcKind = kind == "character_card" ? "character" : dict["source_kind"].AsString();
         var srcIdx = dict["source_slot"].AsInt32();
         SetHoverState(HoverState.Idle);
         var targetKind = Kind == SlotKind.Primary ? "primary" : "backpack";
@@ -157,11 +212,25 @@ public partial class EquipmentSlotView : Control
 
     private bool CanAcceptDrag(Variant data)
     {
-        if (!IsEquipmentData(data)) return false;
         var dict = data.As<Godot.Collections.Dictionary>();
+        if (dict is null || !dict.ContainsKey("kind")) return false;
+        var kind = dict["kind"].AsString();
+        if (kind == "character_card")
+        {
+            // 角色卡禁背包；主槽永遠接受（含目標已有裝備時的 swap）
+            if (Kind == SlotKind.Backpack) return false;
+            var srcSlot = dict["source_slot"].AsInt32();
+            if ((int)PrimarySlot == srcSlot) return false;
+            return true;
+        }
+        if (kind != "equipment") return false;
+
         var srcKind = dict["source_kind"].AsString();
         var srcIdx = dict["source_slot"].AsInt32();
         if (IsSameSlot(srcKind, srcIdx)) return false;
+
+        // 目標槽住有角色卡：來源若是背包則拒絕（角色卡無處可去）；主槽 swap 由 LeftPanel 後續路徑處理。
+        if (Kind == SlotKind.Primary && CharacterCard is not null && srcKind == "backpack") return false;
 
         if (Kind == SlotKind.Backpack) return true;
         if (Catalog is null) return true;
@@ -175,13 +244,6 @@ public partial class EquipmentSlotView : Control
         if (Kind == SlotKind.Primary)
             return srcKind == "primary" && srcIdx == (int)PrimarySlot;
         return srcKind == "backpack" && srcIdx == BackpackIndex;
-    }
-
-    private static bool IsEquipmentData(Variant data)
-    {
-        var dict = data.As<Godot.Collections.Dictionary>();
-        if (dict is null || !dict.ContainsKey("kind")) return false;
-        return dict["kind"].AsString() == "equipment";
     }
 
     private enum HoverState { Idle, Compatible, Hover }
@@ -228,7 +290,7 @@ public partial class EquipmentSlotView : Control
         var card = new EquipmentCardView();
         card.MouseFilter = MouseFilterEnum.Ignore;
 
-        var wrapper = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        var wrapper = MakeTopLevelDragWrapper();
         wrapper.AddChild(card);
         var w = EquipmentCardView.CardWidth;
         var h = EquipmentCardView.CardHeight;
@@ -237,4 +299,29 @@ public partial class EquipmentSlotView : Control
         card.SetEquipment(EquippedItem);
         return wrapper;
     }
+
+    private Control BuildCharacterDragPreview()
+    {
+        var card = new CharacterCardView();
+        card.MouseFilter = MouseFilterEnum.Ignore;
+        var wrapper = MakeTopLevelDragWrapper();
+        wrapper.AddChild(card);
+        var w = CharacterCardView.CardWidth;
+        var h = CharacterCardView.CardHeight;
+        card.Position = new Vector2(-w * 0.5f, -h * 0.5f);
+        card.Size = new Vector2(w, h);
+        card.SetCharacter(CharacterCard);
+        return wrapper;
+    }
+
+    /// <summary>
+    /// drag preview 必須蓋過 ParallaxScene (ZIndex=5) 與其它 Z 加層的元件；
+    /// 用 Godot ZIndex 上限 + ZAsRelative=false 鎖到絕對最上層。
+    /// </summary>
+    private static Control MakeTopLevelDragWrapper() => new()
+    {
+        MouseFilter = MouseFilterEnum.Ignore,
+        ZIndex = 4096,
+        ZAsRelative = false,
+    };
 }

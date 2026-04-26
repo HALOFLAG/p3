@@ -18,6 +18,9 @@ public partial class ActionTriggerPopup : PanelContainer
     {
         Visible = false;
         MouseFilter = Control.MouseFilterEnum.Stop; // 確保自身吸收點擊，避免又被當外部點擊
+        // 蓋過 ParallaxScene (ZIndex=5)：行動選單必須畫在立繪盒上面，否則會被遮住。
+        ZIndex = 20;
+        ZAsRelative = false;
         SetupButton("VBox/MoveButton", () => EmitSignal(SignalName.MoveSelected));
         SetupButton("VBox/RestButton", () => EmitSignal(SignalName.RestSelected));
         SetupButton("VBox/ObserveButton", () => EmitSignal(SignalName.ObserveSelected));

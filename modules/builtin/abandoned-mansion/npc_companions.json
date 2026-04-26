@@ -6,6 +6,17 @@
     "hp": 12,
     "actionPoints": 2,
     "specialty": "每大回合開始時為最低 HP 的同伴恢復 2 HP；對戰鬥類事件提供 +1 判定。",
+    "description": "鎮上小教堂的老神父。年輕時曾是學者，後來因故放下筆墨改披神職；對失蹤事件特別上心，似乎與自己當年某個未解之謎有關。",
+    "personality": "慈祥沉穩、話多但不囉嗦；面對危險先安撫人，再思考對策。",
+    "sceneResponses": [
+      { "scene": "exploration", "text": "讓我為大家祈福，再仔細搜搜看 —— 但別碰未經辨認的器物。" },
+      { "scene": "negotiation", "text": "先聽聽對方怎麼說，多米尼會在你開口前替你打底。" },
+      { "scene": "battle",      "text": "孩子，邪魔退散；保護同伴比擊倒敵人重要。" }
+    ],
+    "skills": [
+      { "id": "priest-active-blessing", "name": "祝禱", "kind": "Active", "description": "消耗 1 AP，使一名同伴下次擲骰 +2。" },
+      { "id": "priest-passive-faith", "name": "信仰庇佑", "kind": "Passive", "description": "本人在場時，所有同伴受到的恐懼類效果回合數 -1。" }
+    ],
     "specialtyEffects": [
       {
         "trigger": "BigRoundStart",
@@ -31,6 +42,17 @@
     "hp": 14,
     "actionPoints": 2,
     "specialty": "進入重要地塊時給予 1 線索碎片；對探索類事件提供 +1 判定。",
+    "description": "全國發行報社的記者。為了追一篇關於失蹤事件的長篇報導潛入小鎮；善於套話、不怕鏡頭、也不怕鬼。",
+    "personality": "好奇心過剩、話速快；遇事喜歡先拍下來再說，會推著隊伍往前衝。",
+    "sceneResponses": [
+      { "scene": "exploration", "text": "等等 —— 那裡的角度不對，我先拍張，你們再進去。" },
+      { "scene": "negotiation", "text": "由我來問，這種人吃軟不吃硬，你們站旁邊就好。" },
+      { "scene": "battle",      "text": "閃光！這玩意兒可不只是相機 —— 你們找掩護！" }
+    ],
+    "skills": [
+      { "id": "journ-active-flash", "name": "閃光彈式取景", "kind": "Active", "description": "消耗 1 AP，全體敵方下回合命中 -1。" },
+      { "id": "journ-passive-leads", "name": "線索敏銳", "kind": "Passive", "description": "進入重要地塊時，相鄰地塊隨機揭示 1 個事件預告。" }
+    ],
     "specialtyEffects": [
       {
         "trigger": "OnEnterTile",
@@ -57,6 +79,17 @@
     "hp": 18,
     "actionPoints": 2,
     "specialty": "戰鬥開始時擲骰 +1、並讓最低 HP 隊員恢復 2 HP。",
+    "description": "退役雇傭兵，現在以「按日計酬」護衛維生。冷酷職業、話少；對委託人忠誠至契約結束的那一刻，連一秒不會多留。",
+    "personality": "務實、寡言；不問理由也不勸退，只關心能不能活著走出地塊。",
+    "sceneResponses": [
+      { "scene": "exploration", "text": "（手按腰刀）走前面我來。" },
+      { "scene": "negotiation", "text": "（沉默地交叉手臂）你說了算。" },
+      { "scene": "battle",      "text": "目標鎖定，掩護玩家；別擋線。" }
+    ],
+    "skills": [
+      { "id": "bg-active-cover", "name": "貼身掩護", "kind": "Active", "description": "消耗 1 AP，下次玩家受到的攻擊由本人代受，傷害 -2。" },
+      { "id": "bg-passive-readyblade", "name": "備戰", "kind": "Passive", "description": "戰鬥開始時所有同伴擲骰 +1（持續 1 回合）。" }
+    ],
     "specialtyEffects": [
       {
         "trigger": "OnBattleStart",

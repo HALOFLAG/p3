@@ -58,10 +58,10 @@ public static class Projection
     }
 
     /// <summary>計算單一地塊以「地面 1×1 單位」投影出的 4 角梯形（後緣窄、前緣寬）。</summary>
-    /// <param name="relRow">玩家為原點的相對 row：-2 (最遠) ~ +2 (最近)</param>
-    /// <param name="relCol">玩家為原點的相對 col：-2 (左) ~ +2 (右)</param>
+    /// <param name="relRow">玩家為原點的相對 row：-2 (最遠) ~ +2 (最近)。可傳小數以支援攝影機補間。</param>
+    /// <param name="relCol">玩家為原點的相對 col：-2 (左) ~ +2 (右)。可傳小數以支援攝影機補間。</param>
     /// <param name="p">投影參數</param>
-    public static ProjectedQuad ProjectQuad(int relRow, int relCol, ProjectionParams p)
+    public static ProjectedQuad ProjectQuad(float relRow, float relCol, ProjectionParams p)
     {
         // 後緣（深度 = relRow - 0.5）與前緣（深度 = relRow + 0.5）
         var (yBack, scaleBack) = DepthSliceContinuous(relRow - 0.5f, p);

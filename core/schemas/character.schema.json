@@ -12,6 +12,7 @@
       "stats": { "$ref": "#/$defs/stats" },
       "hpMax": { "type": "integer", "minimum": 1 },
       "specialty": { "type": "string" },
+      "description": { "type": "string" },
       "startingDeck": { "type": "array", "items": { "type": "string" } },
       "combatAbilities": {
         "type": "array",
@@ -27,6 +28,10 @@
           },
           "additionalProperties": false
         }
+      },
+      "skills": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/skill" }
       }
     }
   },
@@ -40,6 +45,17 @@
         "skill": { "type": "integer" },
         "intellect": { "type": "integer" }
       }
+    },
+    "skill": {
+      "type": "object",
+      "required": ["id", "name", "kind", "description"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": { "type": "string", "enum": ["Active", "Passive"] },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
     }
   }
 }

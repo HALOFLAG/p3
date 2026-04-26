@@ -2,6 +2,7 @@
 // CategorySlots 定義每類可放的槽位（武器/防具/飾品/特殊）；
 // 聚合所有已裝備（排除 CharacterCardSlot）的 StatBonuses 給行動卡/事件檢定；
 // 提供武器命中/傷害取值、腳部加值（用於先攻）。
+using CardNarrative.Core.Cards;
 using CardNarrative.Core.Models;
 using CardNarrative.Core.State;
 
@@ -65,14 +66,64 @@ public static class EquipmentService
         return id;
     }
 
-    /// <summary>Move the character card to a new slot. Any equipment in the target slot is returned to be re-homed by the caller.</summary>
-    public static string? MoveCharacterCard(PlayerState player, EquipmentSlot target)
+    /// <summary>
+    /// Move the character card to <paramref name="target"/>. Same swap semantics as equipment-to-equipment:
+    /// if target slot holds equipment, that equipment migrates to the character card's previous slot
+    /// (must be a compatible slot for it). Returns <see cref="MoveEquipmentResult.IncompatibleSlot"/>
+    /// if the displaced equipment cannot fit the source slot. Backpack is never a valid target.
+    /// </summary>
+    public static MoveEquipmentResult MoveCharacterCard(PlayerState player, Module module, EquipmentSlot target)
     {
-        if (target == player.CharacterCardSlot) return null;
-        player.Equipment.TryGetValue(target, out var displaced);
-        if (displaced is not null) player.Equipment[target] = null;
+        if (target == player.CharacterCardSlot) return MoveEquipmentResult.NoChange;
+
+        var source = player.CharacterCardSlot;
+        player.Equipment.TryGetValue(target, out var targetId);
+
+        if (targetId is not null)
+        {
+            if (!module.Equipment.TryGetValue(targetId, out var targetEq))
+                return MoveEquipmentResult.UnknownEquipment;
+            if (!targetEq.EffectiveAllowedSlots.Contains(source))
+                return MoveEquipmentResult.IncompatibleSlot;
+            player.Equipment[source] = targetId;
+            player.Equipment[target] = null;
+        }
+
         player.CharacterCardSlot = target;
-        return displaced;
+        return MoveEquipmentResult.Ok;
+    }
+
+    /// <summary>
+    /// Drop equipment onto the slot currently holding the character card. The character card swaps to
+    /// <paramref name="equipmentSourceSlot"/>; only valid when the source is a primary slot (backpack
+    /// rejected — the character card cannot enter the backpack).
+    /// </summary>
+    public static MoveEquipmentResult SwapCharacterWithEquipmentSlot(
+        PlayerState player,
+        EquipmentSlot equipmentSourceSlot)
+    {
+        if (equipmentSourceSlot == player.CharacterCardSlot) return MoveEquipmentResult.NoChange;
+        if (!player.Equipment.TryGetValue(equipmentSourceSlot, out var srcId) || srcId is null)
+            return MoveEquipmentResult.SourceEmpty;
+        // Caller pre-validates srcEq.EffectiveAllowedSlots.Contains(player.CharacterCardSlot);
+        // we move the equipment into the character's old slot regardless to keep this routine simple.
+        player.Equipment[player.CharacterCardSlot] = srcId;
+        player.Equipment[equipmentSourceSlot] = null;
+        player.CharacterCardSlot = equipmentSourceSlot;
+        return MoveEquipmentResult.Ok;
+    }
+
+    /// <summary>UI helper — returns character base stats plus equipment bonuses (skipping char card's slot).</summary>
+    public static StatBlock GetTotalStats(PlayerState player, Module module)
+    {
+        if (!module.Characters.TryGetValue(player.CharacterId, out var character))
+            return AggregateStatBonuses(player, module);
+        var bonus = AggregateStatBonuses(player, module);
+        return new StatBlock(
+            character.Stats.Power + bonus.Power,
+            character.Stats.Social + bonus.Social,
+            character.Stats.Skill + bonus.Skill,
+            character.Stats.Intellect + bonus.Intellect);
     }
 
     /// <summary>Sum StatBonuses across all equipped items (skipping the slot occupied by the character card).</summary>

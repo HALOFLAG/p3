@@ -5,6 +5,11 @@
     "stats": { "power": 3, "social": 1, "skill": 4, "intellect": 2 },
     "hpMax": 18,
     "specialty": "Wilderness exploration +1",
+    "description": "A solitary hunter from the northern forests.",
+    "skills": [
+      { "id": "wh-active-track", "name": "Track Quarry", "kind": "Active", "description": "Spend 1 AP to mark target; next attack +2." },
+      { "id": "wh-passive-instinct", "name": "Wild Instinct", "kind": "Passive", "description": "Initiative bonus when entering wilderness tiles." }
+    ],
     "startingDeck": ["careful-search", "basic-attack", "persuade", "integrate-intel"]
   },
   {

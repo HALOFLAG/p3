@@ -5,6 +5,11 @@
     "stats": { "power": 1, "social": 2, "skill": 2, "intellect": 4 },
     "hpMax": 14,
     "specialty": "在書房/儀式廳等『重要地塊』進行思考判定時 +1；每大回合可免費使用 1 次『比對文獻』。",
+    "description": "離群的歷史學者。年輕時曾為皇室翻譯禁忌文獻，因揭發某宗派的秘密儀式而流亡；如今在山邊小屋研究禁書，相信知識能照亮黑暗，也能讓人發瘋。",
+    "skills": [
+      { "id": "scholar-active-consult", "name": "比對文獻", "kind": "Active", "description": "消耗 1 AP，將下一次思考判定改為以 Skill+Intellect 取較高者擲。" },
+      { "id": "scholar-passive-insight", "name": "靜默觀察", "kind": "Passive", "description": "進入新地塊時，無視第一個遭遇判定。" }
+    ],
     "startingDeck": [
       "scholar-cross-reference",
       "scholar-arcane-lore",
@@ -24,6 +29,11 @@
     "stats": { "power": 4, "social": 1, "skill": 2, "intellect": 2 },
     "hpMax": 20,
     "specialty": "戰鬥判定 +1；可替同伴承受一次致命攻擊（每局限用 1 次）。",
+    "description": "前皇家衛隊長。十年前在一場政變後解甲，背負殺友自保的罪疚感獨身流浪；以保護他人替自己贖罪。話少，但出手從不猶豫。",
+    "skills": [
+      { "id": "guard-active-overwatch", "name": "守護姿態", "kind": "Active", "description": "消耗 1 AP，下一次同伴受到攻擊時轉移至自身。" },
+      { "id": "guard-passive-iron", "name": "鐵骨", "kind": "Passive", "description": "受到的傷害下限為 1，無視小型減傷穿透。" }
+    ],
     "startingDeck": [
       "guard-strike",
       "guard-overhand-smash",
@@ -43,6 +53,11 @@
     "stats": { "power": 2, "social": 2, "skill": 4, "intellect": 1 },
     "hpMax": 16,
     "specialty": "移入野外地塊時不觸發遭遇判定；探索類判定 +1。",
+    "description": "在森林邊緣長大的混血斥候。家鄉因莊園主人的「狩獵」而被燒光，只剩她一人逃出。對任何貴族都心存戒心，但對流浪者異常溫柔。",
+    "skills": [
+      { "id": "scout-active-mark", "name": "標記獵物", "kind": "Active", "description": "消耗 1 AP，指定一個敵人；本回合對其攻擊命中 +2。" },
+      { "id": "scout-passive-trail", "name": "辨跡", "kind": "Passive", "description": "進入野外地塊時自動揭示相鄰地塊的探索等級。" }
+    ],
     "startingDeck": [
       "scout-sneak",
       "scout-search",
@@ -62,6 +77,11 @@
     "stats": { "power": 1, "social": 3, "skill": 2, "intellect": 3 },
     "hpMax": 15,
     "specialty": "對『邪靈/儀式』類戰鬥造成 +2 傷害；可識別任何含有 ritual 標籤的事件隱藏結果。",
+    "description": "出身於某個被教廷除名的神秘結社。年少時親眼見父母在不潔儀式中喪命，從此立志將禁術研究透徹以阻止悲劇重演；舉止優雅，眼神卻常常望向他人看不見的地方。",
+    "skills": [
+      { "id": "occult-active-banish", "name": "驅逐之語", "kind": "Active", "description": "消耗 1 AP，對邪靈類目標扣 1 連結點數，連結為 0 時立即被驅離。" },
+      { "id": "occult-passive-thirdeye", "name": "第三眼", "kind": "Passive", "description": "事件發動時，若該事件含 ritual 標籤，可預先讀取其隱藏結果。" }
+    ],
     "startingDeck": [
       "occult-ward",
       "occult-banish",

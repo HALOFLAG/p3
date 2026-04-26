@@ -136,7 +136,12 @@ public partial class CardView : PanelContainer
         preview.MouseFilter = MouseFilterEnum.Ignore;
         preview.Modulate = new Color(1, 1, 1, 0.92f);
         // 包一層 Control 做置中偏移，讓滑鼠在卡片中央
-        var wrapper = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        var wrapper = new Control
+        {
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = 4096, // Godot ZIndex 上限；蓋過 ParallaxScene(5) / hint
+            ZAsRelative = false,
+        };
         wrapper.AddChild(preview);
         preview.Position = new Vector2(-Size.X * 0.5f, -Size.Y * 0.5f);
         return wrapper;

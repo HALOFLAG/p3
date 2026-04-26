@@ -21,6 +21,34 @@
       },
       "hp": { "type": "integer", "minimum": 1 },
       "specialty": { "type": "string" },
+      "description": { "type": "string" },
+      "personality": { "type": "string" },
+      "sceneResponses": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["scene", "text"],
+          "properties": {
+            "scene": { "type": "string" },
+            "text": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "skills": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["id", "name", "kind", "description"],
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "kind": { "type": "string", "enum": ["Active", "Passive"] },
+            "description": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
       "actionPoints": { "type": "integer", "minimum": 1 },
       "strategyTable": {
         "type": "array",

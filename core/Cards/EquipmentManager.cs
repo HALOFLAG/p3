@@ -111,6 +111,49 @@ public static class EquipmentManager
         backpack.Insert(0, equipmentId); // 新獲得進背包頂端
         return MoveEquipmentResult.Ok;
     }
+
+    /// <summary>
+    /// 角色卡 slot ↔ slot 移動：套用「與裝備卡相同」的 swap 規則，但永遠拒絕背包。
+    /// 目標若有裝備 → 該裝備搬到角色卡原槽；若該裝備不能放原槽，回 IncompatibleSlot。
+    /// </summary>
+    public static (MoveEquipmentResult Result, EquipmentSlot NewCharacterSlot) MoveCharacterCardSlotToSlot(
+        IDictionary<EquipmentSlot, string?> equipped,
+        IReadOnlyDictionary<string, Equipment> catalog,
+        EquipmentSlot characterCurrentSlot,
+        EquipmentSlot target)
+    {
+        if (target == characterCurrentSlot) return (MoveEquipmentResult.NoChange, characterCurrentSlot);
+
+        equipped.TryGetValue(target, out var targetId);
+        if (targetId is not null)
+        {
+            if (!catalog.TryGetValue(targetId, out var targetEq))
+                return (MoveEquipmentResult.UnknownEquipment, characterCurrentSlot);
+            if (!targetEq.EffectiveAllowedSlots.Contains(characterCurrentSlot))
+                return (MoveEquipmentResult.IncompatibleSlot, characterCurrentSlot);
+            equipped[characterCurrentSlot] = targetId;
+            equipped[target] = null;
+        }
+
+        return (MoveEquipmentResult.Ok, target);
+    }
+
+    /// <summary>
+    /// 把裝備從另一槽放進角色卡所在槽：等同 swap — 角色卡移到 sourceSlot，原本在 sourceSlot 的裝備
+    /// 進角色卡舊槽。背包來源永遠拒絕（角色卡不可入背包）。
+    /// </summary>
+    public static (MoveEquipmentResult Result, EquipmentSlot NewCharacterSlot) SwapCharacterWithEquipmentSlot(
+        IDictionary<EquipmentSlot, string?> equipped,
+        EquipmentSlot characterCurrentSlot,
+        EquipmentSlot equipmentSourceSlot)
+    {
+        if (equipmentSourceSlot == characterCurrentSlot) return (MoveEquipmentResult.NoChange, characterCurrentSlot);
+        if (!equipped.TryGetValue(equipmentSourceSlot, out var srcId) || srcId is null)
+            return (MoveEquipmentResult.SourceEmpty, characterCurrentSlot);
+        equipped[characterCurrentSlot] = srcId;
+        equipped[equipmentSourceSlot] = null;
+        return (MoveEquipmentResult.Ok, equipmentSourceSlot);
+    }
 }
 
 public enum MoveEquipmentResult

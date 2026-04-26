@@ -1,5 +1,6 @@
 using CardNarrative.Core.Cards;
 using CardNarrative.Core.Map;
+using CardNarrative.Core.Models;
 using FluentAssertions;
 
 namespace CardNarrative.Tests.Map;
@@ -67,12 +68,13 @@ public class WorldMapTests
     }
 
     [Fact]
-    public void NextTilePreview_ReturnsTopTwoOfDeck()
+    public void NextTilePreview_ReturnsTopThreeOfDeck()
     {
         var map = NewMap();
-        map.NextTilePreview.Should().HaveCount(2);
+        map.NextTilePreview.Should().HaveCount(3);
         map.NextTilePreview[0].Should().Be(MapTerrain.Path);
         map.NextTilePreview[1].Should().Be(MapTerrain.Forest);
+        map.NextTilePreview[2].Should().Be(MapTerrain.Grass);
     }
 
     // === IsLegalPlacement ===
@@ -438,6 +440,106 @@ public class WorldMapTests
         private readonly int _d1, _d2;
         public FixedRoll(int d1, int d2) { _d1 = d1; _d2 = d2; }
         public (int D1, int D2) Roll2d6() => (_d1, _d2);
+    }
+
+    // === 角色卡 / 夥伴卡（Phase 2 任務 9 後續整合）===
+
+    private static Equipment Eq(string id, ItemCategory cat, EquipmentSlot[] allowed, StatBlock? bonuses = null)
+        => new(id, id, allowed[0], bonuses, "")
+        {
+            Category = cat,
+            AllowedSlots = allowed,
+        };
+
+    [Fact]
+    public void LoadCharacter_SetsHpMaxHpAndFiresEvent()
+    {
+        var map = NewMap();
+        var fired = 0;
+        map.CharacterChanged += () => fired++;
+        var c = new Character("oscar", "奧斯卡", new StatBlock(2, 4, 3, 3), 12, "", System.Array.Empty<string>());
+        map.LoadCharacter(c);
+        map.HpMax.Should().Be(12);
+        map.Hp.Should().Be(12);
+        map.Character.Should().Be(c);
+        fired.Should().BeGreaterOrEqualTo(1);
+    }
+
+    [Fact]
+    public void MoveCharacterCardToSlot_EmptyTarget_Succeeds()
+    {
+        var map = NewMap();
+        map.LoadCharacter(new Character("a", "A", new StatBlock(1, 1, 1, 1), 10, "", System.Array.Empty<string>()));
+        // 預設 char 在 Head
+        var r = map.MoveCharacterCardToSlot(EquipmentSlot.Body);
+        r.Should().Be(MoveEquipmentResult.Ok);
+        map.CharacterCardSlot.Should().Be(EquipmentSlot.Body);
+    }
+
+    [Fact]
+    public void MoveCharacterCardToSlot_OccupiedIncompatibleTarget_Rejected()
+    {
+        var map = NewMap();
+        map.LoadCharacter(new Character("a", "A", new StatBlock(1, 1, 1, 1), 10, "", System.Array.Empty<string>()));
+        // 角色卡在 Head；Weapon 放只能在 Weapon/OffHand 的武器
+        var sword = Eq("sword", ItemCategory.Weapon,
+            new[] { EquipmentSlot.Weapon, EquipmentSlot.OffHand });
+        map.LoadEquipmentInventory(new System.Collections.Generic.Dictionary<string, Equipment> { ["sword"] = sword },
+            System.Array.Empty<string>());
+        // 強制把武器放到 Weapon（用 backpack 路徑模擬不便；改透過 reflection-free：先放背包再 swap）
+        // 簡化：手動寫入 dictionary 不可行（外部不可寫）；改用 LoadEquipmentInventory 注入背包再 backpack→Weapon
+        var map2 = new WorldMap(new NoSubstituteRandom());
+        map2.LoadCharacter(new Character("a", "A", new StatBlock(1, 1, 1, 1), 10, "", System.Array.Empty<string>()));
+        map2.LoadEquipmentInventory(new System.Collections.Generic.Dictionary<string, Equipment> { ["sword"] = sword },
+            new[] { "sword" });
+        map2.MoveEquipmentBackpackToSlot(0, EquipmentSlot.Weapon).Should().Be(MoveEquipmentResult.Ok);
+
+        var r = map2.MoveCharacterCardToSlot(EquipmentSlot.Weapon);
+        // 武器無法回 Head（武器 EffectiveAllowedSlots 不含 Head）→ IncompatibleSlot
+        r.Should().Be(MoveEquipmentResult.IncompatibleSlot);
+        map2.CharacterCardSlot.Should().Be(EquipmentSlot.Head);
+    }
+
+    [Fact]
+    public void MoveEquipmentSlotToSlot_TargetIsCharacterSlot_SwapsCharacter()
+    {
+        var map = new WorldMap(new NoSubstituteRandom());
+        map.LoadCharacter(new Character("a", "A", new StatBlock(1, 1, 1, 1), 10, "", System.Array.Empty<string>()));
+        // helmet 可放 Head
+        var helmet = Eq("helmet", ItemCategory.Armor, new[] { EquipmentSlot.Head, EquipmentSlot.Body });
+        map.LoadEquipmentInventory(new System.Collections.Generic.Dictionary<string, Equipment> { ["helmet"] = helmet },
+            new[] { "helmet" });
+        // helmet 進 Body
+        map.MoveEquipmentBackpackToSlot(0, EquipmentSlot.Body).Should().Be(MoveEquipmentResult.Ok);
+        // 拖 helmet 從 Body → Head（角色卡所在槽）→ 預期 swap：角色卡到 Body、helmet 到 Head
+        var r = map.MoveEquipmentSlotToSlot(EquipmentSlot.Body, EquipmentSlot.Head);
+        r.Should().Be(MoveEquipmentResult.Ok);
+        map.CharacterCardSlot.Should().Be(EquipmentSlot.Body);
+        map.Equipped[EquipmentSlot.Head].Should().Be("helmet");
+    }
+
+    [Fact]
+    public void MoveEquipmentBackpackToSlot_TargetIsCharacterSlot_Rejected()
+    {
+        var map = new WorldMap(new NoSubstituteRandom());
+        map.LoadCharacter(new Character("a", "A", new StatBlock(1, 1, 1, 1), 10, "", System.Array.Empty<string>()));
+        var helmet = Eq("helmet", ItemCategory.Armor, new[] { EquipmentSlot.Head });
+        map.LoadEquipmentInventory(new System.Collections.Generic.Dictionary<string, Equipment> { ["helmet"] = helmet },
+            new[] { "helmet" });
+        // 角色卡在 Head；嘗試從背包把 helmet 放 Head → 角色卡需移到背包但禁背包 → 拒絕
+        var r = map.MoveEquipmentBackpackToSlot(0, EquipmentSlot.Head);
+        r.Should().Be(MoveEquipmentResult.IncompatibleSlot);
+        map.CharacterCardSlot.Should().Be(EquipmentSlot.Head);
+    }
+
+    [Fact]
+    public void MoveEquipmentSlotToBackpack_FromCharacterSlot_Rejected()
+    {
+        var map = new WorldMap(new NoSubstituteRandom());
+        map.LoadCharacter(new Character("a", "A", new StatBlock(1, 1, 1, 1), 10, "", System.Array.Empty<string>()));
+        // 角色卡在 Head；嘗試把 Head「裝備」搬到背包 — 但實際是角色卡，應拒絕
+        var r = map.MoveEquipmentSlotToBackpack(EquipmentSlot.Head);
+        r.Should().Be(MoveEquipmentResult.IncompatibleSlot);
     }
 
     // === Camera ===
