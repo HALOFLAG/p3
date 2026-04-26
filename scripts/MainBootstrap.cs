@@ -197,6 +197,15 @@ public partial class MainBootstrap : Control
         // === Task 11 Stage 1：載入模組 + 建 GameState（runtime 唯一一次模組載入）===
         LoadModuleAndCreateGameState();
 
+        // === Task 11 Stage 3.4：切到 state-backed WorldMap ===
+        // 自此 mainMap.WorldMap 是 GameState 投影；後續 LoadActionDeck / LoadCharacterAndCompanions
+        // 等 mutation 走 state.CurrentPlayer.* 寫入路徑（dispatch 已在 Stage 3.1+3.2 完成）。
+        if (_module is not null && _gameState is not null)
+        {
+            mainMap.SwapWorldMap(new CardNarrative.Core.Map.WorldMap(_gameState, _module));
+            GD.Print("[MainBootstrap] WorldMap 已切換為 state-backed（GameState 為唯一 SoT）。");
+        }
+
         // === 載入 abandoned-mansion 模組行動卡 / 角色 / 裝備（用 _module）===
         TryLoadAbandonedMansionDeck(mainMap);
 

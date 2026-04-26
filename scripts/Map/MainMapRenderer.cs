@@ -22,7 +22,7 @@ public partial class MainMapRenderer : Control
 {
     [Export] public PackedScene? TileVisualScene { get; set; }
 
-    private readonly WorldMap _worldMap = new();
+    private WorldMap _worldMap = new();
     private readonly TileVisual[,] _tileNodes = new TileVisual[WorldMap.Size, WorldMap.Size];
     private Node2D? _tileLayer;
     private ProjectionParams _projection;
@@ -58,6 +58,28 @@ public partial class MainMapRenderer : Control
     private readonly DiceServiceRollProvider _rollProvider;
 
     public WorldMap WorldMap => _worldMap;
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 3.4：把當前 WorldMap 換成 state-backed instance。
+    /// 由 MainBootstrap._Ready 在建好 GameState + Module 後呼叫。
+    /// 流程：unsubscribe 舊 → swap → subscribe 新 → 重接小地圖 → 重新渲染。
+    /// </summary>
+    public void SwapWorldMap(WorldMap newMap)
+    {
+        if (ReferenceEquals(_worldMap, newMap)) return;
+        UnsubscribeWorldMap();
+        _worldMap = newMap;
+        SubscribeWorldMap();
+        // 重新接小地圖
+        var minimapGrid = GetNodeOrNull<MinimapRenderer>("Minimap/Grid");
+        minimapGrid?.AttachWorldMap(_worldMap);
+        // 重新觸發一次 HUD signals 與 tile 投影
+        if (_tileLayer != null) UpdateAllTiles();
+        EmitHudSignals();
+        EmitSignal(SignalName.CharacterChangedExt);
+        EmitSignal(SignalName.CompanionChangedExt);
+        EmitSignal(SignalName.EquipmentChangedExt);
+    }
 
     /// <summary>當前載入的模組（給 LeftPanel 計算 4 屬性總值與裝備加值查表用）。</summary>
     public CardNarrative.Core.Models.Module? Module { get; private set; }
