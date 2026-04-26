@@ -372,14 +372,82 @@ public partial class MainBootstrap : Control
         _eventDialog.Open(inst, _mainMap?.WorldMap.Companion);
     }
 
-    /// <summary>結算完成 → 從 ORBIT 移除；後續接 GameState 後可在此套用 outcome.Effects。</summary>
+    /// <summary>
+    /// Task 11 Stage 3.5：結算完成 → 套 outcome.Effects 到 GameState（透過 EffectHandler）→
+    /// 通知 WorldMap UI 更新（NotifyTileChanged）→ 從 ORBIT 移除。
+    /// 整個流程包在 BeginEventBatch / EndEventBatch 內，emit 一次依 priority 排序。
+    /// </summary>
     private void OnEventResolved(string eventId, int tier)
     {
-        if (_orbit is null) return;
+        if (_orbit is null || _mainMap is null) return;
+
+        var inst = _orbit.Pending.FirstOrDefault(i => i.Card.Id == eventId);
+        if (inst is null) return;
+
         var tierName = tier switch { 0 => "成功", 1 => "部分成功", _ => "失敗" };
-        GD.Print($"[MainBootstrap] ORBIT '{eventId}' 結算完成：{tierName}");
-        _mainMap?.AppendLog($"事件結算「{eventId}」→ {tierName}");
+        var outcome = tier switch
+        {
+            0 => inst.Card.Outcomes.Success,
+            1 => inst.Card.Outcomes.PartialSuccess,
+            _ => inst.Card.Outcomes.Failure,
+        };
+
+        GD.Print($"[MainBootstrap] ORBIT '{eventId}' 結算完成：{tierName}（套 {outcome.Effects.Count} 個 effect）");
+        _mainMap.AppendLog($"事件結算「{eventId}」→ {tierName}");
+
+        if (_gameState is not null && _module is not null)
+        {
+            var worldMap = _mainMap.WorldMap;
+            worldMap.BeginEventBatch();
+            try
+            {
+                var handler = new EffectHandler();
+                foreach (var effect in outcome.Effects)
+                {
+                    handler.Apply(effect, _gameState, _module);
+                    NotifyWorldMapAfterEffect(effect, worldMap);
+                }
+            }
+            finally
+            {
+                worldMap.EndEventBatch();
+            }
+        }
+
         _orbit.RemoveById(eventId);
+    }
+
+    /// <summary>EffectHandler 套完後，依 effect 型別通知 WorldMap UI 更新對應格 / HUD。</summary>
+    private void NotifyWorldMapAfterEffect(EffectBase effect, CardNarrative.Core.Map.WorldMap worldMap)
+    {
+        if (_gameState is null || _module is null) return;
+        switch (effect)
+        {
+            case TransformTileEffect tt:
+                {
+                    int x = tt.X ?? _gameState.CurrentPlayer.Position.X;
+                    int y = tt.Y ?? _gameState.CurrentPlayer.Position.Y;
+                    worldMap.NotifyTileChanged(y, x); // row=Y, col=X
+                    break;
+                }
+            case TransformTilesByTagEffect tbt:
+                {
+                    // 批次轉變：對每個符合 tags 的已放置格 emit TileChanged
+                    foreach (var (key, placed) in _gameState.TileMap)
+                    {
+                        if (!_module.Tiles.TryGetValue(placed.TileId, out var tile)) continue;
+                        bool allMatch = true;
+                        foreach (var tag in tbt.Tags)
+                        {
+                            if (!tile.Tags.Contains(tag)) { allMatch = false; break; }
+                        }
+                        if (allMatch) worldMap.NotifyTileChanged(key.Y, key.X);
+                    }
+                    break;
+                }
+            // 其他 effect（SetFlag/GrantResource/ClimaxTn/...）目前不需要 WorldMap UI 通知；
+            // GrantEquipment / TileProgress / TriggerBattle 留 Task 12+ 接 UI 時補
+        }
     }
 
     /// <summary>
