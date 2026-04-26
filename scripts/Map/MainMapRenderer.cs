@@ -664,6 +664,15 @@ public partial class MainMapRenderer : Control
         var node = _tileNodes[row, col];
         var data = _worldMap.GetTile(row, col);
         node.SetTile(data.Terrain, data.IsPlaced, data.IsExplored);
+
+        // Stage 6：若變動的格 == 玩家所在格，同步更新場景立繪 terrain
+        // （L3-07：transformTile 後三視角同步 — 主地圖紋理 / 小地圖色塊 / 場景立繪）。
+        // ParallaxSceneController.SetTerrain 會 short-circuit 同 terrain 不重繪，呼叫成本低。
+        var (playerRow, playerCol) = _worldMap.PlayerPos;
+        if (row == playerRow && col == playerCol)
+        {
+            UpdateParallaxScene();
+        }
     }
 
     private void OnPlayerMoved(int oldRow, int oldCol, int newRow, int newCol)
