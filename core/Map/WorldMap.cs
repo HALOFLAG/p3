@@ -78,7 +78,30 @@ public sealed class WorldMap
     public (float Row, float Col) CameraOffset { get; private set; } = (0f, 0f);
 
     public InteractionMode Mode { get; private set; } = InteractionMode.Idle;
-    public MapTerrain? HeldTile { get; private set; }
+
+    private MapTerrain? _heldTile;
+    /// <summary>
+    /// state-mode 從 _heldTileId 派生 MapTerrain（透過 TileVisualProfileResolver）；
+    /// standalone 使用 _heldTile 內部欄位。
+    /// </summary>
+    public MapTerrain? HeldTile
+    {
+        get
+        {
+            if (_state is null) return _heldTile;
+            if (_heldTileId is null || _module is null) return null;
+            if (!_module.Tiles.TryGetValue(_heldTileId, out var tile)) return null;
+            return TileVisualProfileResolver.ResolveTerrain(tile);
+        }
+        private set
+        {
+            if (_state is null) _heldTile = value;
+            // state-mode：HeldTile 由 _heldTileId 決定，外部設值無意義
+            // 內部呼叫 BeginMapExpand / TryPlaceHeldTile / CancelMapExpand 時直接操作 _heldTileId
+        }
+    }
+    /// <summary>state-mode 持有的 tile id（從 state.TileDeck 抽出）。standalone 不使用。</summary>
+    private string? _heldTileId;
 
     private int _hp = 12;
     public int Hp
@@ -133,7 +156,7 @@ public sealed class WorldMap
         }
     }
 
-    public int HandSize => _hand.Count;
+    public int HandSize => _state is null ? _hand.Count : _state.CurrentPlayer.Hand.Count;
 
     private bool _firstMoveUsedThisTurn;
     /// <summary>
@@ -189,8 +212,15 @@ public sealed class WorldMap
         return result;
     }
 
-    public int ActionDeckRemaining => _actionDeck.DrawCount;
-    public int ActionDiscardCount => _actionDeck.DiscardCount;
+    /// <summary>state-mode 從 state.CurrentPlayer.Deck.Count 取；standalone 從 _actionDeck.DrawCount。</summary>
+    public int ActionDeckRemaining => _state is null
+        ? _actionDeck.DrawCount
+        : _state.CurrentPlayer.Deck.Count;
+
+    /// <summary>state-mode 從 state.CurrentPlayer.Discard.Count 取；standalone 從 _actionDeck.DiscardCount。</summary>
+    public int ActionDiscardCount => _state is null
+        ? _actionDeck.DiscardCount
+        : _state.CurrentPlayer.Discard.Count;
     public IReadOnlyList<CompanionAiState> Companions => _companions;
 
     /// <summary>當前裝備配置（slot → equipmentId）。Read-only 對外。</summary>
@@ -200,8 +230,23 @@ public sealed class WorldMap
     /// <summary>裝備目錄（id → Equipment）。</summary>
     public IReadOnlyDictionary<string, Equipment> EquipmentCatalog => _equipmentCatalog;
 
-    public IReadOnlyList<MapTerrain> NextTilePreview => _tileDeck.Take(3).ToArray();
-    public int RemainingTiles => _tileDeck.Count;
+    public IReadOnlyList<MapTerrain> NextTilePreview
+    {
+        get
+        {
+            if (_state is null) return _tileDeck.Take(3).ToArray();
+            if (_module is null) return System.Array.Empty<MapTerrain>();
+            var result = new List<MapTerrain>();
+            foreach (var id in _state.TileDeck.Take(3))
+            {
+                if (_module.Tiles.TryGetValue(id, out var tile))
+                    result.Add(TileVisualProfileResolver.ResolveTerrain(tile));
+            }
+            return result;
+        }
+    }
+
+    public int RemainingTiles => _state is null ? _tileDeck.Count : _state.TileDeck.Count;
 
     public event Action<int, int>? TileChanged;
     public event Action<int, int, int, int>? PlayerMoved;
@@ -276,12 +321,27 @@ public sealed class WorldMap
             IsPlaced: true, IsExplored: true);
     }
 
-    /// <summary>從外部（如 ModuleLoader）注入行動卡 deck，並抽至手牌上限。</summary>
+    /// <summary>
+    /// 從外部（如 ModuleLoader）注入行動卡 deck，並抽至手牌上限。
+    /// state-mode 寫進 state.CurrentPlayer.Deck（覆蓋 CreateNew 已洗好的牌組）。
+    /// </summary>
     public void LoadActionDeck(IEnumerable<ActionCard> cards)
     {
-        _actionDeck.LoadInitial(cards);
-        _hand.Clear();
-        DrawToHandLimit();
+        if (_state is null)
+        {
+            _actionDeck.LoadInitial(cards);
+            _hand.Clear();
+            DrawToHandLimit();
+        }
+        else
+        {
+            var ids = cards.Select(c => c.Id).ToList();
+            _state.CurrentPlayer.Deck.Clear();
+            _state.CurrentPlayer.Deck.AddRange(ids);
+            _state.CurrentPlayer.Hand.Clear();
+            _state.CurrentPlayer.Discard.Clear();
+            DrawToHandLimit();
+        }
     }
 
     /// <summary>
@@ -393,14 +453,31 @@ public sealed class WorldMap
 
     private void DrawToHandLimit()
     {
-        while (_hand.Count < HandSizeMax)
+        if (_state is null)
         {
-            var card = _actionDeck.DrawOne();
-            if (card is null) break;
-            _hand.Add(card);
+            while (_hand.Count < HandSizeMax)
+            {
+                var card = _actionDeck.DrawOne();
+                if (card is null) break;
+                _hand.Add(card);
+            }
+            HandChanged?.Invoke(_hand);
+            HandSizeChanged?.Invoke(_hand.Count, HandSizeMax);
         }
-        HandChanged?.Invoke(_hand);
-        HandSizeChanged?.Invoke(_hand.Count, HandSizeMax);
+        else
+        {
+            var sHand = _state.CurrentPlayer.Hand;
+            var sDeck = _state.CurrentPlayer.Deck;
+            while (sHand.Count < HandSizeMax && sDeck.Count > 0)
+            {
+                var top = sDeck[0];
+                sDeck.RemoveAt(0);
+                sHand.Add(top);
+            }
+            // 投影 cache 自動透過 Hand getter 重建；事件對外仍 emit
+            HandChanged?.Invoke(BuildHandFromState());
+            HandSizeChanged?.Invoke(sHand.Count, HandSizeMax);
+        }
     }
 
     /// <summary>
@@ -466,14 +543,14 @@ public sealed class WorldMap
     public bool IsLegalPlacement(int row, int col)
     {
         if (!IsInBounds(row, col)) return false;
-        if (_tiles[row, col].IsPlaced) return false;
+        if (GetTile(row, col).IsPlaced) return false;
         return HasPlacedNeighbor(row, col);
     }
 
     public bool IsLegalMoveTarget(int row, int col)
     {
         if (!IsInBounds(row, col)) return false;
-        if (!_tiles[row, col].IsPlaced) return false;
+        if (!GetTile(row, col).IsPlaced) return false;
         var (pr, pc) = PlayerPos;
         return Math.Abs(row - pr) + Math.Abs(col - pc) == 1;
     }
@@ -481,8 +558,17 @@ public sealed class WorldMap
     public bool BeginMapExpand()
     {
         if (Mode != InteractionMode.Idle) return false;
-        if (_tileDeck.Count == 0) return false;
-        HeldTile = _tileDeck.Dequeue();
+        if (_state is null)
+        {
+            if (_tileDeck.Count == 0) return false;
+            _heldTile = _tileDeck.Dequeue();
+        }
+        else
+        {
+            if (_state.TileDeck.Count == 0) return false;
+            _heldTileId = _state.TileDeck[0];
+            _state.TileDeck.RemoveAt(0);
+        }
         Mode = InteractionMode.MapExpand;
         ModeChanged?.Invoke();
         return true;
@@ -490,12 +576,26 @@ public sealed class WorldMap
 
     public bool TryPlaceHeldTile(int row, int col)
     {
-        if (Mode != InteractionMode.MapExpand || HeldTile is null) return false;
+        if (Mode != InteractionMode.MapExpand) return false;
+        if (HeldTile is null) return false;
         if (!IsLegalPlacement(row, col)) return false;
 
         var terrain = HeldTile.Value;
-        _tiles[row, col] = _tiles[row, col] with { Terrain = terrain, IsPlaced = true };
-        HeldTile = null;
+        if (_state is null)
+        {
+            _tiles[row, col] = _tiles[row, col] with { Terrain = terrain, IsPlaced = true };
+            _heldTile = null;
+        }
+        else
+        {
+            // state.TileMap key = (X=col, Y=row)；新 PlacedTile 預設 Level=Unknown 觸發後續 onEnter 探索
+            _state!.TileMap[(col, row)] = new PlacedTile
+            {
+                TileId = _heldTileId!,
+                Level = ExplorationLevel.Unknown,
+            };
+            _heldTileId = null;
+        }
         Mode = InteractionMode.Idle;
         TilePlaced?.Invoke(terrain, row, col);
         TileChanged?.Invoke(row, col);
@@ -505,13 +605,23 @@ public sealed class WorldMap
 
     public void CancelMapExpand()
     {
-        if (Mode != InteractionMode.MapExpand || HeldTile is null) return;
-        var newDeck = new Queue<MapTerrain>();
-        newDeck.Enqueue(HeldTile.Value);
-        foreach (var t in _tileDeck) newDeck.Enqueue(t);
-        _tileDeck.Clear();
-        foreach (var t in newDeck) _tileDeck.Enqueue(t);
-        HeldTile = null;
+        if (Mode != InteractionMode.MapExpand) return;
+        if (HeldTile is null) return;
+        if (_state is null)
+        {
+            var newDeck = new Queue<MapTerrain>();
+            newDeck.Enqueue(_heldTile!.Value);
+            foreach (var t in _tileDeck) newDeck.Enqueue(t);
+            _tileDeck.Clear();
+            foreach (var t in newDeck) _tileDeck.Enqueue(t);
+            _heldTile = null;
+        }
+        else
+        {
+            // 把 heldTileId 放回 state.TileDeck 最前端
+            _state!.TileDeck.Insert(0, _heldTileId!);
+            _heldTileId = null;
+        }
         Mode = InteractionMode.Idle;
         ModeChanged?.Invoke();
     }
@@ -541,10 +651,24 @@ public sealed class WorldMap
         PlayerPos = (newRow, newCol);
         FirstMoveUsedThisTurn = true;
 
-        if (!_tiles[newRow, newCol].IsExplored)
+        // 標記目標格為已探索
+        if (_state is null)
         {
-            _tiles[newRow, newCol] = _tiles[newRow, newCol] with { IsExplored = true };
-            TileChanged?.Invoke(newRow, newCol);
+            if (!_tiles[newRow, newCol].IsExplored)
+            {
+                _tiles[newRow, newCol] = _tiles[newRow, newCol] with { IsExplored = true };
+                TileChanged?.Invoke(newRow, newCol);
+            }
+        }
+        else
+        {
+            // state-mode：把目標格的 Level 升到 Familiar（IsExplored 派生條件）
+            if (_state.TileMap.TryGetValue((newCol, newRow), out var placed)
+                && (int)placed.Level < (int)ExplorationLevel.Familiar)
+            {
+                placed.Level = ExplorationLevel.Familiar;
+                TileChanged?.Invoke(newRow, newCol);
+            }
         }
 
         if (Mode == InteractionMode.Move)
@@ -583,16 +707,27 @@ public sealed class WorldMap
     /// </summary>
     public PlayCardResult TryPlayCard(string cardId)
     {
-        var card = _hand.FirstOrDefault(c => c.Id == cardId);
+        // Hand getter 已 dispatch（state-mode 投影自 state.CurrentPlayer.Hand × module.ActionCards）
+        var card = Hand.FirstOrDefault(c => c.Id == cardId);
         if (card is null) return new PlayCardResult(false, "找不到該卡（不在手牌）", 0);
 
         if (card.Cost > 0 && !TryConsumeAp(card.Cost))
             return new PlayCardResult(false, $"AP 不足（需 {card.Cost} AP）", card.Cost);
 
-        _hand.Remove(card);
-        _actionDeck.DiscardCard(card);
-        HandChanged?.Invoke(_hand);
-        HandSizeChanged?.Invoke(_hand.Count, HandSizeMax);
+        if (_state is null)
+        {
+            _hand.Remove(card);
+            _actionDeck.DiscardCard(card);
+            HandChanged?.Invoke(_hand);
+            HandSizeChanged?.Invoke(_hand.Count, HandSizeMax);
+        }
+        else
+        {
+            _state.CurrentPlayer.Hand.Remove(cardId);
+            _state.CurrentPlayer.Discard.Add(cardId);
+            HandChanged?.Invoke(BuildHandFromState());
+            HandSizeChanged?.Invoke(_state.CurrentPlayer.Hand.Count, HandSizeMax);
+        }
         return new PlayCardResult(true, $"打出「{card.Name}」", card.Cost);
     }
 
@@ -647,10 +782,10 @@ public sealed class WorldMap
 
     private bool HasPlacedNeighbor(int row, int col)
     {
-        return (IsInBounds(row - 1, col) && _tiles[row - 1, col].IsPlaced)
-            || (IsInBounds(row + 1, col) && _tiles[row + 1, col].IsPlaced)
-            || (IsInBounds(row, col - 1) && _tiles[row, col - 1].IsPlaced)
-            || (IsInBounds(row, col + 1) && _tiles[row, col + 1].IsPlaced);
+        return (IsInBounds(row - 1, col) && GetTile(row - 1, col).IsPlaced)
+            || (IsInBounds(row + 1, col) && GetTile(row + 1, col).IsPlaced)
+            || (IsInBounds(row, col - 1) && GetTile(row, col - 1).IsPlaced)
+            || (IsInBounds(row, col + 1) && GetTile(row, col + 1).IsPlaced);
     }
 }
 
