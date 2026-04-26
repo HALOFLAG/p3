@@ -53,6 +53,20 @@
           "sceneTheme": { "type": "string", "description": "選用：場景立繪主題識別字（forest-day / town-night ...）" }
         },
         "additionalProperties": false
+      },
+      "transformations": {
+        "description": "Phase 2 任務 11 Stage 5：tile-side 轉變規則（規格書 §1.5 TileTransformRule）。EventCheck 階段事件 trigger 後，runtime 從 TileTransformRegistry 索引該 triggerEventId，符合 condition 的 tile 全部變成 transformsTo。condition 缺則「無條件成立」。",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["triggerEventId", "transformsTo"],
+          "properties": {
+            "triggerEventId": { "type": "string", "description": "觸發此規則的 event id（對應 events.json 的 id）" },
+            "transformsTo": { "type": "string", "description": "目標 tile id（對應 tiles.json 中其他 tile 的 id）" },
+            "condition": { "description": "選用 JsonLogic 規則；命名空間見規格書 §7.3。", "type": "object" }
+          },
+          "additionalProperties": false
+        }
       }
     }
   },

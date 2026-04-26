@@ -21,7 +21,10 @@
       { "key": "oil", "name": "燈油", "perVisit": 1 }
     ],
     "onEnter": [],
-    "visualProfile": { "terrain": "Building" }
+    "visualProfile": { "terrain": "Building" },
+    "transformations": [
+      { "triggerEventId": "village-inquiry", "transformsTo": "forest-path" }
+    ]
   },
   {
     "id": "ruined-chapel",

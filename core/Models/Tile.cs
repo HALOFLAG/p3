@@ -43,4 +43,12 @@ public sealed record Tile(
     /// 用 <see cref="Map.TileVisualProfileResolver"/> 解析。
     /// </summary>
     public VisualProfile? VisualProfile { get; init; }
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 5：tile-side 轉變規則（規格書 §1.5 TileTransformRule）。
+    /// 模組載入時透過 <see cref="Map.TileTransformRegistry"/> 索引；
+    /// EventCheck 階段事件 trigger 後逐項評估 condition、符合則套 TransformTileEffect。
+    /// 缺欄位 = 該 tile 對外部事件無 transform 規則。
+    /// </summary>
+    public IReadOnlyList<TileTransformRule> Transformations { get; init; } = Array.Empty<TileTransformRule>();
 }

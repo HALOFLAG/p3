@@ -32,6 +32,8 @@ public partial class MainBootstrap : Control
     // Task 11 Stage 1：runtime GameState（gridSize=9, startPosition=(4,4)）；
     // Stage 1 僅儲存參照供 Stage 2 façade 使用，本 stage WorldMap 仍是 authoritative。
     private CardNarrative.Core.State.GameState? _gameState;
+    // Task 11 Stage 5：tile-side transformations 索引（事件 trigger 後 O(R) 查找）
+    private CardNarrative.Core.Map.TileTransformRegistry? _tileTransformRegistry;
     private readonly System.Random _orbitDemoRng = new();
 
     public override void _Ready()
@@ -259,6 +261,14 @@ public partial class MainBootstrap : Control
 
             GD.Print($"[MainBootstrap] GameState 建立：起始 ({_gameState.CurrentPlayer.Position.X},{_gameState.CurrentPlayer.Position.Y})、"
                      + $"主角 {heroId}、同伴 [{string.Join(", ", companionIds)}]");
+
+            // Stage 5：建 tile-side transformation registry（事件 → 規則反向索引）
+            _tileTransformRegistry = CardNarrative.Core.Map.TileTransformRegistry.Build(_module);
+            if (_tileTransformRegistry.RuleCount > 0)
+            {
+                GD.Print($"[MainBootstrap] TileTransformRegistry 建立：{_tileTransformRegistry.RuleCount} 條規則 / "
+                         + $"{_tileTransformRegistry.IndexedEventIds.Count} 個觸發事件");
+            }
         }
         catch (System.Exception ex)
         {
@@ -410,6 +420,10 @@ public partial class MainBootstrap : Control
                     handler.Apply(effect, _gameState, _module);
                     NotifyWorldMapAfterEffect(effect, worldMap, preState);
                 }
+
+                // Stage 5：tile-side transformations — 從 registry 查 eventId 對應的規則，
+                //         逐項評估 condition 並套用。同樣在 batch 內 emit TileTransformed。
+                ApplyTileSideTransformationsForEvent(eventId, worldMap);
             }
             finally
             {
@@ -418,6 +432,55 @@ public partial class MainBootstrap : Control
         }
 
         _orbit.RemoveById(eventId);
+    }
+
+    /// <summary>
+    /// Stage 5：tile-side transformations 觸發 — 從 registry 索引 eventId 對應規則，
+    /// 對符合 condition 的 tile 套用 TransformTileEffect 並 emit TileTransformed。
+    /// </summary>
+    private void ApplyTileSideTransformationsForEvent(string eventId, CardNarrative.Core.Map.WorldMap worldMap)
+    {
+        if (_gameState is null || _module is null || _tileTransformRegistry is null) return;
+        var rules = _tileTransformRegistry.GetRulesForEvent(eventId);
+        if (rules.Count == 0) return;
+
+        // 抓變化前 terrain（tile-side 規則可能影響任何位置）
+        var preStates = new System.Collections.Generic.List<(int Row, int Col, CardNarrative.Core.Map.MapTerrain OldTerrain)>();
+        foreach (var (sourceTileId, _) in rules)
+        {
+            foreach (var (key, placed) in _gameState.TileMap)
+            {
+                if (placed.TileId != sourceTileId) continue;
+                if (!_module.Tiles.TryGetValue(placed.TileId, out var tileDef)) continue;
+                var oldTerrain = CardNarrative.Core.Map.TileVisualProfileResolver.ResolveTerrain(tileDef);
+                preStates.Add((key.Y, key.X, oldTerrain));
+            }
+        }
+
+        // 套用（透過 MapService 走 EffectHandler 統一邏輯 + JsonLogic 評估）
+        var ctx = JsonLogicContextBuilder.FromGameState(_gameState, _module, _orbit);
+        var changes = CardNarrative.Core.Map.MapService.TryTransformTilesForEvent(
+            _gameState, _module, _tileTransformRegistry, eventId, ctx);
+
+        if (changes.Count == 0) return;
+        GD.Print($"[MainBootstrap] tile-side transformations 觸發 {changes.Count} 格變化（事件 {eventId}）");
+
+        // emit TileChanged + TileTransformed（攜帶舊/新 terrain）
+        foreach (var change in changes)
+        {
+            int row = change.Y, col = change.X;
+            worldMap.NotifyTileChanged(row, col);
+            // 抓 NEW terrain（state 已 mutate）
+            var newTerrain = ResolveCurrentTerrain(row, col);
+            // 找 preState 對應位置的 OLD terrain
+            CardNarrative.Core.Map.MapTerrain? oldTerrain = null;
+            foreach (var ps in preStates)
+            {
+                if (ps.Row == row && ps.Col == col) { oldTerrain = ps.OldTerrain; break; }
+            }
+            if (oldTerrain.HasValue && newTerrain.HasValue)
+                worldMap.NotifyTileTransformed(row, col, oldTerrain.Value, newTerrain.Value);
+        }
     }
 
     /// <summary>
