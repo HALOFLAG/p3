@@ -43,7 +43,7 @@ public class WorldMapDualModeTilesAndHandTests
     // === GetTile dispatch ===
 
     [Fact]
-    public void StateMode_GetTile_AtStartingPos_ReturnsResolvedTile()
+    public void StateMode_GetTile_AtStartingPos_ReturnsResolvedTileExplored()
     {
         var (module, state, map) = NewStateBackedMap();
         // 起始 tile = village-square (terrain=town, visualProfile.terrain=Building)
@@ -52,8 +52,10 @@ public class WorldMapDualModeTilesAndHandTests
         tile.Row.Should().Be(4);
         tile.Col.Should().Be(4);
         tile.Terrain.Should().Be(MapTerrain.Building);
-        // CreateNew 預設 Level=Unfamiliar < Familiar → IsExplored=false
-        tile.IsExplored.Should().BeFalse();
+        // Stage 3.6 修復：CreateNew 預設 Level=Unfamiliar；
+        // IsExplored 門檻改為 >= Unfamiliar（語意：placed-and-entered = 已知）→ 起始格 IsExplored=true
+        // 這對應 Phase 1+2 standalone 起始格 IsExplored=true 的行為，避免起始格顯示 card-back
+        tile.IsExplored.Should().BeTrue();
     }
 
     [Fact]

@@ -510,6 +510,7 @@ public sealed class WorldMap
     {
         if (_state is null)
         {
+            // standalone：DeckService.DrawOne 抽牌堆空時自動重洗棄牌堆（規格書 §3.4.2）
             while (_hand.Count < HandSizeMax)
             {
                 var card = _actionDeck.DrawOne();
@@ -521,18 +522,47 @@ public sealed class WorldMap
         }
         else
         {
+            // state-mode：規格書 §3.1.3 / §3.4.2 — 抽牌堆空時把棄牌堆洗回；兩堆都空才停
             var sHand = _state.CurrentPlayer.Hand;
             var sDeck = _state.CurrentPlayer.Deck;
-            while (sHand.Count < HandSizeMax && sDeck.Count > 0)
+            var sDiscard = _state.CurrentPlayer.Discard;
+            while (sHand.Count < HandSizeMax)
             {
+                if (sDeck.Count == 0)
+                {
+                    if (sDiscard.Count == 0) break;
+                    ReshuffleDiscardIntoDeck();
+                }
                 var top = sDeck[0];
                 sDeck.RemoveAt(0);
                 sHand.Add(top);
             }
-            // 投影 cache 自動透過 Hand getter 重建；事件對外仍 emit
             HandChanged?.Invoke(BuildHandFromState());
             HandSizeChanged?.Invoke(sHand.Count, HandSizeMax);
         }
+    }
+
+    /// <summary>
+    /// state-mode 棄牌堆重洗回抽牌堆（規格書 §3.1.3）。
+    /// Fisher-Yates；seed 由 RngSeed × 大回合 × Discard.Count 衍生（deterministic per-turn）。
+    /// </summary>
+    private void ReshuffleDiscardIntoDeck()
+    {
+        if (_state is null) return;
+        var sDeck = _state.CurrentPlayer.Deck;
+        var sDiscard = _state.CurrentPlayer.Discard;
+        if (sDiscard.Count == 0) return;
+
+        var seed = unchecked(_state.RngSeed * 31 + _state.CurrentBigRound * 7 + sDiscard.Count);
+        var rng = new Random(seed);
+        var pool = new List<string>(sDiscard);
+        sDiscard.Clear();
+        for (int i = pool.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (pool[i], pool[j]) = (pool[j], pool[i]);
+        }
+        sDeck.AddRange(pool);
     }
 
     /// <summary>
@@ -588,8 +618,12 @@ public sealed class WorldMap
             && _module.Tiles.TryGetValue(placed.TileId, out var tileDef))
         {
             var terrain = TileVisualProfileResolver.ResolveTerrain(tileDef);
-            // IsExplored = ExplorationLevel >= Familiar（規格書 §3.5：探索等級 ≥ 熟悉視為已探索）
-            var explored = (int)placed.Level >= (int)ExplorationLevel.Familiar;
+            // IsExplored = ExplorationLevel >= Unfamiliar
+            // 語意：Unknown(-2) = 剛 placed 尚未踏入 → 顯示 card-back；
+            // Unfamiliar(-1)+ = 已踏入過、看過真實地形 → 顯示 PNG。
+            // 起始格 CreateNew 預設 Unfamiliar → 自動 IsExplored=true（與 Phase 1+2 行為一致）。
+            // PromoteOnFirstEnter 升 Unknown→Unfamiliar 後該格也轉為 explored。
+            var explored = (int)placed.Level >= (int)ExplorationLevel.Unfamiliar;
             return new TileData(row, col, terrain, IsPlaced: true, IsExplored: explored);
         }
         return new TileData(row, col, MapTerrain.Forest, IsPlaced: false, IsExplored: false);
