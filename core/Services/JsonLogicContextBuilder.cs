@@ -3,6 +3,7 @@
 // 規格書 §5.3 / §7.3 列出 8 類變數：
 //   flag.<name>、hero.{hp,ap,attr.*}、companion[i].{hp,id}、companion.count、
 //   turn、currentTile.{terrain,row,col,tileCardId}、
+//   tile.<row>.<col>.{terrain,tileCardId,isImportant,level}、
 //   orbit.{A,B,C}.count、orbit.contains.<eventId>、
 //   worldFlags.<name>
 //
@@ -10,7 +11,8 @@
 //   - companion[i] 的索引語意以「state.Companions」順序為準（i 從 0 起）。
 //     展平命名為 companion.0.hp / companion.1.hp …，符合 JsonLogic var 的 dot-segment 取值。
 //   - orbit.contains.<eventId> 採布林 flag 寫法（只放在 orbit 上的 id 為 true，未列入即視為缺值 = false）。
-//   - tile[r,c].* lazy resolver 不在本 helper 範圍（規格 §1.6 變化頻繁，留待專屬 PR）。
+//   - tile.<row>.<col>.* 預先展開所有已放置 tile（PlacedTile 通常 < 30 個，pre-populate 比 lazy 簡單）。
+//     row = Position.Y, col = Position.X（與 currentTile 一致）；負座標以 "-1" 等字串 key 存放。
 //   - 不存在的角色 / 同伴欄位完全跳過，避免「null var」誤觸發 JsonLogic 預設行為。
 using CardNarrative.Core.Events;
 using CardNarrative.Core.Models;
@@ -85,6 +87,19 @@ public static class JsonLogicContextBuilder
                 {
                     ctx.Set("currentTile.terrain", tile.Terrain.ToString());
                 }
+            }
+        }
+
+        // tile.<row>.<col>.* — 展開所有已放置地塊（row=Y, col=X，與 currentTile 對齊）
+        foreach (var ((x, y), placedTile) in state.TileMap)
+        {
+            var prefix = $"tile.{y}.{x}";
+            ctx.Set($"{prefix}.tileCardId", placedTile.TileId);
+            ctx.Set($"{prefix}.level", (int)placedTile.Level);
+            if (module.Tiles.TryGetValue(placedTile.TileId, out var tileDef))
+            {
+                ctx.Set($"{prefix}.terrain", tileDef.Terrain.ToString());
+                ctx.Set($"{prefix}.isImportant", tileDef.Important);
             }
         }
 

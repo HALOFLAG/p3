@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using CardNarrative.Core.Events;
 using CardNarrative.Core.Models;
 using CardNarrative.Core.Services;
 using Godot;
@@ -21,10 +22,27 @@ public partial class MainBootstrap : Control
     private MainMapRenderer? _mainMap;
     private HandDock? _handDock;
 
+    // Task 9 · ORBIT 軌道（Core 物件 + UI 面板）
+    private EventBus? _eventBus;
+    private EventOrbit? _orbit;
+    private EventOrbitResolver? _orbitResolver;
+    private OrbitPanel? _orbitPanel;
+    private EventResolutionDialog? _eventDialog;
+    private CardNarrative.Core.Models.Module? _module;
+    private readonly System.Random _orbitDemoRng = new();
+
     public override void _Ready()
     {
         // 套用全域 Theme
         Theme = UiTheme.Build();
+
+        // === Task 9 · EventBus + ORBIT 物件（不動 main.tscn）===
+        // OrbitPanel UI 由 RightPanel 的 ORBIT 區位內建，不需此處浮動建立。
+        _eventBus = new EventBus { Name = "EventBus" };
+        AddChild(_eventBus);
+        _orbit = new EventOrbit();
+        _orbitResolver = new EventOrbitResolver(_orbit);
+        _orbit.OrbitChanged += () => _eventBus?.EmitOrbitChanged();
 
         // 找各子場景節點
         var topBar = GetNodeOrNull<TopBar>("ScreenStack/TopBar");
@@ -106,7 +124,21 @@ public partial class MainBootstrap : Control
         {
             mainMap.DeckStatusChanged += rightPanel.OnDeckStatusChanged;
             mainMap.LogAppended += rightPanel.OnLogAppended;
+            // Task 9：把 Core EventOrbit 注入到 RightPanel 內建的 OrbitPanel
+            _orbitPanel = rightPanel.OrbitPanel;
+            _orbitPanel?.SetOrbit(_orbit!);
+            if (_orbitPanel is not null)
+                _orbitPanel.EventCardClicked += OnOrbitCardClicked;
         }
+
+        // === Task 9 · 事件結算對話框（單例，重複開）===
+        _eventDialog = new EventResolutionDialog { Name = "EventResolutionDialog" };
+        AddChild(_eventDialog);
+        _eventDialog.EventResolved += OnEventResolved;
+
+        // === Task 9 Part A · 玩家移動 → 隨機晉升 1 張 ClassC → ClassA（模擬 tile-enter 觸發）===
+        // mainMap 在更上方已 null 檢查並 return，此處保證非 null
+        mainMap.PlayerPositionChanged += (_, _) => PromoteRandomEventToClassA();
 
         // === HandDock 接線 ===
         if (handDock != null)
@@ -138,6 +170,10 @@ public partial class MainBootstrap : Control
 
         // === 載入 abandoned-mansion 模組行動卡 ===
         TryLoadAbandonedMansionDeck(mainMap);
+
+        // === Task 9 demo seed：把模組前幾張事件推進 ORBIT，讓 panel 有內容可看 ===
+        // 真正的 event 來源 → ORBIT 自動 register 留待後續 PR
+        TrySeedOrbitDemoEvents();
 
         GD.Print("[MainBootstrap] 主場景就緒，所有 Signal 已連線。");
     }
@@ -178,6 +214,97 @@ public partial class MainBootstrap : Control
         {
             GD.PrintErr($"[MainBootstrap] 模組載入例外：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Task 9 Part A · 把模組所有事件 register 進 ORBIT 為 ClassC（未揭露），
+    /// 預先把 2 張升 ClassA 讓 F5 立即可測試結算對話框；結局卡掛 IsEnding 旗標。
+    /// 真正的事件來源 → ORBIT register 改寫（含 EventTrigger → JsonLogic 條件翻譯）留待後續 PR。
+    /// </summary>
+    private void TrySeedOrbitDemoEvents()
+    {
+        if (_orbit is null) return;
+        try
+        {
+            var schemasFolder = ProjectSettings.GlobalizePath("res://core/schemas/");
+            var modulePath = ProjectSettings.GlobalizePath("res://modules/builtin/abandoned-mansion/");
+            var loader = new ModuleLoader(schemasFolder);
+            if (loader.Load(modulePath) is not ModuleLoadResult.Success success) return;
+            _module = success.Module;
+
+            int idx = 0;
+            foreach (var ev in _module.Events.Values)
+            {
+                // demo：前 2 張預設 ClassA 立即可結算；其餘進 ClassC
+                var initialClass = idx < 2 ? EventOrbitClass.ClassA : EventOrbitClass.ClassC;
+                _orbit.Push(new EventInstance(ev, initialClass: initialClass));
+                idx++;
+            }
+
+            // 結局卡（ClassC，金邊；未來條件達成時升 A 觸發結局結算）
+            var ending = _module.Endings.Values.FirstOrDefault();
+            if (ending is not null)
+            {
+                var endingAsEvent = new EventCard(
+                    Id: $"ending-{ending.Id}",
+                    Name: ending.Id,
+                    Type: EventType.Special,
+                    Tn: 0,
+                    Trigger: new TileEnterTrigger("any"),
+                    Stat: Stat.Skill,
+                    AllowedActionTypes: System.Array.Empty<ActionType>(),
+                    Narrative: ending.Narrative,
+                    Outcomes: new EventOutcomes(
+                        Success: new EventOutcome(ending.Narrative, System.Array.Empty<EffectBase>()),
+                        PartialSuccess: new EventOutcome(ending.Narrative, System.Array.Empty<EffectBase>()),
+                        Failure: new EventOutcome(ending.Narrative, System.Array.Empty<EffectBase>())));
+                _orbit.Push(new EventInstance(endingAsEvent, initialClass: EventOrbitClass.ClassC, isEnding: true));
+            }
+
+            GD.Print($"[MainBootstrap] ORBIT 載入 {_orbit.Pending.Count} 個事件（含 1 結局卡）。");
+        }
+        catch (System.Exception ex)
+        {
+            GD.PrintErr($"[MainBootstrap] ORBIT seed 失敗：{ex.Message}");
+        }
+    }
+
+    /// <summary>玩家點擊 ORBIT 卡 → 若是 ClassA 則打開結算對話框（B/C 無反應）。</summary>
+    private void OnOrbitCardClicked(string eventId)
+    {
+        if (_orbit is null || _eventDialog is null) return;
+        var inst = _orbit.Pending.FirstOrDefault(i => i.Card.Id == eventId);
+        if (inst is null) return;
+        if (inst.Class != EventOrbitClass.ClassA)
+        {
+            GD.Print($"[MainBootstrap] ORBIT '{eventId}' 為 {inst.Class}，尚未可結算。");
+            return;
+        }
+        _eventDialog.Open(inst);
+    }
+
+    /// <summary>結算完成 → 從 ORBIT 移除；後續接 GameState 後可在此套用 outcome.Effects。</summary>
+    private void OnEventResolved(string eventId, int tier)
+    {
+        if (_orbit is null) return;
+        var tierName = tier switch { 0 => "成功", 1 => "部分成功", _ => "失敗" };
+        GD.Print($"[MainBootstrap] ORBIT '{eventId}' 結算完成：{tierName}");
+        _mainMap?.AppendLog($"事件結算「{eventId}」→ {tierName}");
+        _orbit.RemoveById(eventId);
+    }
+
+    /// <summary>
+    /// Task 9 Part A · 玩家每次移動觸發 — 隨機把 1 張 ClassC 升為 ClassA（模擬 tile-enter 觸發）。
+    /// 真正的條件式 reveal/trigger 評估留待後續 PR（接 JsonLogicContextBuilder + 真實 GameState）。
+    /// </summary>
+    private void PromoteRandomEventToClassA()
+    {
+        if (_orbit is null) return;
+        var classCs = _orbit.Pending.Where(i => i.Class == EventOrbitClass.ClassC && !i.IsEnding).ToList();
+        if (classCs.Count == 0) return;
+        var pick = classCs[_orbitDemoRng.Next(classCs.Count)];
+        _orbit.Promote(pick, EventOrbitClass.ClassA);
+        _mainMap?.AppendLog($"ORBIT 揭露：{pick.Card.Name}（已可結算）");
     }
 
     private void OnHandCardClicked(string cardId)

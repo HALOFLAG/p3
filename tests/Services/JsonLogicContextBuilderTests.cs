@@ -97,6 +97,30 @@ public class JsonLogicContextBuilderTests
     }
 
     [Fact]
+    public void TileLazyResolverExposesEachPlacedTile()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        // CreateNew 已置起始地塊在 (0,0)；確認其 var 路徑可被 JsonLogic 取到
+        var startTileId = state.TileMap[(0, 0)].TileId;
+
+        var ctx = JsonLogicContextBuilder.FromGameState(state, module);
+
+        // 起始地塊：tile.0.0.tileCardId == 起始 id
+        ctx.Variables.Should().ContainKey("tile.0.0.tileCardId");
+        ctx.Variables["tile.0.0.tileCardId"]!.GetValue<string>().Should().Be(startTileId);
+        ctx.Variables.Should().ContainKey("tile.0.0.terrain");
+        ctx.Variables.Should().ContainKey("tile.0.0.isImportant");
+        ctx.Variables.Should().ContainKey("tile.0.0.level");
+
+        // 透過 JsonLogic 取值能命中
+        var ev = new JsonLogicEvaluator();
+        var rule = System.Text.Json.Nodes.JsonNode.Parse(
+            $$"""{"==":[{"var":"tile.0.0.tileCardId"},"{{startTileId}}"]}""");
+        ev.Evaluate(rule, ctx).Should().BeTrue();
+    }
+
+    [Fact]
     public void OmitsHeroSectionWhenNoPlayers()
     {
         var module = ModuleFactory.Load();

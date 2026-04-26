@@ -771,7 +771,8 @@ public partial class MainMapRenderer : Control
         EmitSignal(SignalName.HandChangedExt, _worldMap.HandSize, WorldMap.HandSizeMax);
     }
 
-    private void AppendLog(string line)
+    /// <summary>對外開放：讓 MainBootstrap / 其他 UI 元件（如 ORBIT 結算）也能寫入 TURN LOG。</summary>
+    public void AppendLog(string line)
     {
         EmitSignal(SignalName.LogAppended, line);
         EmitHudSignals();

@@ -6,6 +6,7 @@
 // EnqueueEvent/ResolvePendingEvent、CollectResource、InvestCluesForProgress、EndPlayerTurn。
 // 與 EffectHandler / EventScheduler / TileProgressService / EquipmentService 協作；
 // 管理手牌循環（抽牌 + 棄牌堆重洗、事件起始補滿、事件間補 2 張上限）。
+using CardNarrative.Core.Events;
 using CardNarrative.Core.Models;
 using CardNarrative.Core.State;
 
@@ -25,6 +26,7 @@ public sealed class TurnLoop
     private readonly Module _module;
     private readonly IDiceService _dice;
     private readonly EventScheduler? _scheduler;
+    private readonly EventOrbitResolver? _orbit; // Task 9 · ORBIT 軌道（可選；null 走舊單發 scheduler 路徑）
     private readonly ITurnLogSink? _log;
     private readonly IEffectHandler _effectHandler;
     // A2 · 同伴主動行動
@@ -36,15 +38,20 @@ public sealed class TurnLoop
     public RollResult? LastRoll { get; private set; }
     public EventCard? PendingEvent { get; private set; }
 
+    /// <summary>Task 9 · 由 ORBIT EventCheck 觸發但本回合無法立即結算的事件，已排入 PendingEventQueue 後仍可參考。</summary>
+    public EventOrbitResolver? Orbit => _orbit;
+
     public TurnLoop(GameState state, IDiceService dice, Module module,
         EventScheduler? scheduler = null, ITurnLogSink? log = null,
         IEffectHandler? effectHandler = null,
-        CompanionAbilityHandler? companionAbilities = null)
+        CompanionAbilityHandler? companionAbilities = null,
+        EventOrbitResolver? orbit = null)
     {
         State = state;
         _dice = dice;
         _module = module;
         _scheduler = scheduler;
+        _orbit = orbit;
         _log = log;
         _effectHandler = effectHandler ?? new EffectHandler();
         _companionAbilities = companionAbilities ?? new CompanionAbilityHandler(log);
@@ -342,6 +349,29 @@ public sealed class TurnLoop
 
     private bool TryTriggerOnEventCheck()
     {
+        // Task 9 · ORBIT 路徑（若有掛載）：優先處理已 register 到軌道上的事件，
+        // 第一張被觸發的 → 走 PendingEvent 給玩家結算，其餘排入 PendingEventQueue。
+        if (_orbit is not null && _orbit.Orbit.Pending.Count > 0)
+        {
+            var ctx = JsonLogicContextBuilder.FromGameState(State, _module, _orbit.Orbit);
+            var report = _orbit.ResolvePending(ctx);
+            if (report.EndingTriggered is not null)
+            {
+                State.BigRoundsWithoutEvent = 0;
+                BeginEvent(report.EndingTriggered.Card);
+                return true;
+            }
+            if (report.Triggered.Count > 0)
+            {
+                State.BigRoundsWithoutEvent = 0;
+                BeginEvent(report.Triggered[0].Card);
+                for (int i = 1; i < report.Triggered.Count; i++)
+                    State.PendingEventQueue.Add(report.Triggered[i].Card.Id);
+                return true;
+            }
+            // ORBIT 沒觸發 → 落到舊 scheduler 路徑（保留舊行為）
+        }
+
         if (_scheduler is null) return false;
         var ev = _scheduler.FindTriggeredOnEventCheck(State, _module);
         if (ev is null)

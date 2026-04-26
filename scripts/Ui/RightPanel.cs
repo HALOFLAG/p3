@@ -14,6 +14,9 @@ public partial class RightPanel : PanelContainer
     private Label? _deckRemainingLabel;
     private RichTextLabel? _logText;
 
+    /// <summary>區塊 #15 ORBIT 任務板 — Task 9 起取代舊 stub grid，由 MainBootstrap 注入 EventOrbit。</summary>
+    public OrbitPanel? OrbitPanel { get; private set; }
+
     private readonly List<string> _logLines = new();
     private const int MaxLogLines = 12;
 
@@ -43,11 +46,12 @@ public partial class RightPanel : PanelContainer
         vbox.AddChild(nextBox);
         BuildNextPreview(nextBox);
 
-        // === 2. ORBIT 軌道 ===
-        AddPanelHeader(vbox, "⏳", Palette.RedDark, "ORBIT 軌道", "stub");
+        // === 2. ORBIT 軌道（Task 9：取代舊 stub）===
+        AddPanelHeader(vbox, "⏳", Palette.RedDark, "ORBIT 軌道", "");
         var orbitBox = MakeContentBox();
         vbox.AddChild(orbitBox);
-        BuildOrbitGrid(orbitBox);
+        OrbitPanel = new OrbitPanel { Name = "OrbitPanel" };
+        orbitBox.AddChild(OrbitPanel);
 
         // === 3. TURN LOG ===
         AddPanelHeader(vbox, "✎", Palette.OrnamentInk, "TURN LOG", "");
@@ -117,41 +121,6 @@ public partial class RightPanel : PanelContainer
         valueLabel.HorizontalAlignment = HorizontalAlignment.Center;
         v.AddChild(valueLabel);
         return p;
-    }
-
-    private void BuildOrbitGrid(MarginContainer parent)
-    {
-        var grid = new GridContainer { Columns = 3 };
-        grid.AddThemeConstantOverride("h_separation", 4);
-        grid.AddThemeConstantOverride("v_separation", 4);
-        parent.AddChild(grid);
-
-        // stub：6 個槽位（A 高亮 / B 灰 / C 卡背）
-        AddOrbitSlot(grid, "A1", Palette.Red, false);
-        AddOrbitSlot(grid, "B1", Palette.WithAlpha(Palette.Ink, 0.4f), false);
-        AddOrbitSlot(grid, "B2", Palette.WithAlpha(Palette.Ink, 0.4f), false);
-        AddOrbitSlot(grid, "??", Palette.Brown, true);
-        AddOrbitSlot(grid, "??", Palette.Brown, true);
-        AddOrbitSlot(grid, "??", Palette.Brown, true);
-    }
-
-    private static void AddOrbitSlot(GridContainer parent, string label, Color borderColor, bool faceDown)
-    {
-        var p = new PanelContainer { CustomMinimumSize = new Vector2(80, 60) };
-        p.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = faceDown ? Palette.PaperDark : Palette.Paper,
-            BorderColor = borderColor,
-            BorderWidthLeft = 1, BorderWidthRight = 1,
-            BorderWidthTop = 1, BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 2, CornerRadiusTopRight = 2,
-            CornerRadiusBottomLeft = 2, CornerRadiusBottomRight = 2,
-        });
-        var l = MakeColoredLabel(label, 14, Palette.Ink);
-        l.HorizontalAlignment = HorizontalAlignment.Center;
-        l.VerticalAlignment = VerticalAlignment.Center;
-        p.AddChild(l);
-        parent.AddChild(p);
     }
 
     private void BuildTurnLog(MarginContainer parent)
