@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="JsonLogic" Version="6.0.0" />
     <PackageReference Include="JsonSchema.Net" Version="9.2.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.6" />
   </ItemGroup>
