@@ -22,7 +22,9 @@ public partial class TileVisual : Node2D
     private Polygon2D? _frontSidePolygon;  // 前緣下方厚度
     private Polygon2D? _leftSidePolygon;   // 左斜邊厚度
     private Polygon2D? _rightSidePolygon;  // 右斜邊厚度
-    private Polygon2D? _overlayPolygon;    // 半透明色蓋層
+    private Polygon2D? _overlayPolygon;    // 半透明色蓋層（LegalPlacement / MoveTarget / PlayerMark）
+    private Polygon2D? _pulsePolygon;      // Task 10：小地圖點擊時短暫脈動高亮（與 _overlayPolygon 獨立）
+    private Tween? _pulseTween;
     private Area2D? _hoverArea;
     private CollisionShape2D? _collShape;
 
@@ -83,6 +85,16 @@ public partial class TileVisual : Node2D
         };
         AddChild(_overlayPolygon);
 
+        // Task 10 — 脈動高亮層（小地圖點擊觸發；與 OverlayPolygon 獨立避免覆蓋 PlayerMark）
+        _pulsePolygon = new Polygon2D
+        {
+            Name = "PulsePolygon",
+            Color = new Color(1.0f, 0.85f, 0.2f, 0.35f),
+            Visible = false,
+            Modulate = new Color(1f, 1f, 1f, 0f),
+        };
+        AddChild(_pulsePolygon);
+
         // Click 命中區
         _hoverArea = new Area2D { Name = "HoverArea", InputPickable = true };
         AddChild(_hoverArea);
@@ -114,6 +126,28 @@ public partial class TileVisual : Node2D
     }
 
     /// <summary>
+    /// Task 10 — 觸發短暫脈動高亮（小地圖點擊用）。
+    /// 動畫時序：淡入 200ms → hold 600ms → 淡出 200ms（總長 1s）。
+    /// 重複呼叫會殺掉前一次 Tween 重啟。
+    /// </summary>
+    public void TriggerPulseHighlight()
+    {
+        if (_pulsePolygon is null) return;
+        _pulseTween?.Kill();
+        _pulsePolygon.Visible = true;
+        _pulsePolygon.Modulate = new Color(1f, 1f, 1f, 0f);
+        var tween = CreateTween();
+        tween.TweenProperty(_pulsePolygon, "modulate:a", 1f, 0.2);
+        tween.TweenInterval(0.6);
+        tween.TweenProperty(_pulsePolygon, "modulate:a", 0f, 0.2);
+        tween.TweenCallback(Callable.From(() =>
+        {
+            if (_pulsePolygon != null) _pulsePolygon.Visible = false;
+        }));
+        _pulseTween = tween;
+    }
+
+    /// <summary>
     /// 設定地塊 4 角（在 TileVisual 的 local 座標系，原點為 TileVisual.Position）。
     /// 順序：後左 → 後右 → 前右 → 前左（順時針）。
     /// </summary>
@@ -137,6 +171,11 @@ public partial class TileVisual : Node2D
         if (_overlayPolygon != null)
         {
             _overlayPolygon.Polygon = quad;
+        }
+
+        if (_pulsePolygon != null)
+        {
+            _pulsePolygon.Polygon = quad;
         }
 
         // === 2. 三面側緣厚度（左/右/前下方）===

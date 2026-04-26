@@ -187,16 +187,23 @@ public partial class MainMapRenderer : Control
         SpawnAllTiles();
         SubscribeWorldMap();
 
-        var resetBtn = GetNodeOrNull<Button>("ResetButtonContainer/ResetButton");
-        if (resetBtn != null) resetBtn.Pressed += OnResetPressed;
+        // Task 10 — 小地圖節點 + 「回到玩家中心」按鈕（取代原 main_map.tscn 內的 ResetButtonContainer）
+        var minimapGrid = GetNodeOrNull<MinimapRenderer>("Minimap/Grid");
+        if (minimapGrid != null)
+        {
+            minimapGrid.AttachWorldMap(_worldMap);
+            minimapGrid.TileHighlightRequested += OnMinimapTileHighlightRequested;
+        }
+        var minimapResetBtn = GetNodeOrNull<Button>("Minimap/ResetButton");
+        if (minimapResetBtn != null) minimapResetBtn.Pressed += OnResetPressed;
 
         // 動態加 PlayCardZone（規格書 §4.2.2 拖曳出牌接收區）
         var dropZone = new PlayCardZone { Name = "PlayCardZone" };
         AddChild(dropZone);
         // _Ready 內部會 SetAnchorsAndOffsetsPreset(FullRect) — 自動覆蓋整個 MapArea
         dropZone.CardDropped += OnCardDroppedToMap;
-        // 把 PlayCardZone 移到 TileLayer 之後、UI Controls (Reset/Popup/Dialog) 之前
-        // 避免 PlayCardZone 蓋住 popup 與 reset button
+        // 把 PlayCardZone 移到 TileLayer 之後、UI Controls (Minimap/Popup/Dialog) 之前
+        // 避免 PlayCardZone 蓋住 popup 與小地圖點擊
         var tileLayer = GetNodeOrNull("TileLayer");
         if (tileLayer != null)
         {
@@ -345,15 +352,21 @@ public partial class MainMapRenderer : Control
     {
         var (playerRow, playerCol) = _worldMap.PlayerPos;
         var (offsetRow, offsetCol) = _worldMap.CameraOffset;
+        var (offsetRowInt, offsetRowFrac) = DecomposeOffset(offsetRow);
+        var (offsetColInt, offsetColFrac) = DecomposeOffset(offsetCol);
         float bestDistSq = float.MaxValue;
         (int row, int col)? best = null;
 
         for (int r = 0; r < WorldMap.Size; r++)
         for (int c = 0; c < WorldMap.Size; c++)
         {
-            var relRow = (r - playerRow) - (int)Mathf.Round(offsetRow);
-            var relCol = (c - playerCol) - (int)Mathf.Round(offsetCol);
-            if (!Projection.IsVisible(relRow, relCol, _projection)) continue;
+            // Visibility check 用整格版（IsVisible 接 int），實際命中測試用 sub-pixel 版確保
+            // 拖曳到一半時點擊可命中視覺上實際顯示的 tile。
+            var relRowInt = (r - playerRow) - (int)offsetRowInt;
+            var relColInt = (c - playerCol) - (int)offsetColInt;
+            if (!Projection.IsVisible(relRowInt, relColInt, _projection)) continue;
+            var relRow = relRowInt - offsetRowFrac;
+            var relCol = relColInt - offsetColFrac;
 
             var quad = Projection.ProjectQuad(relRow, relCol, _projection);
             var poly = new Vector2[]
@@ -831,16 +844,37 @@ public partial class MainMapRenderer : Control
 
     private void OnResetPressed() => _worldMap.ResetCameraToPlayer();
 
+    /// <summary>Task 10 — 小地圖點擊任一格 → 主地圖該格短暫脈動高亮（不移動視野）。</summary>
+    private void OnMinimapTileHighlightRequested(int row, int col)
+    {
+        if (row < 0 || row >= WorldMap.Size || col < 0 || col >= WorldMap.Size) return;
+        var node = _tileNodes[row, col];
+        node?.TriggerPulseHighlight();
+    }
+
     // === Layout ===
 
     /// <summary>地塊間 push-apart gap 比例（推力 = relCol/relRow × tileSize × 此比例）。</summary>
     private const float TileGapRatio = 0.10f;
 
+    /// <summary>
+    /// 把連續攝影機 offset 拆成「整格 + 小數」(規格書 §3.5 sub-pixel 平滑拖曳)。
+    /// 整格走原 Round 視窗中心對位邏輯；小數從 rel 中減回，產生連續視覺位移。
+    /// FracPart ∈ [-0.5, +0.5]。
+    /// </summary>
+    private static (float IntPart, float FracPart) DecomposeOffset(float v)
+    {
+        var i = (float)Mathf.Round(v);
+        return (i, v - i);
+    }
+
     private void UpdateAllTiles()
     {
         var (playerRow, playerCol) = _worldMap.PlayerPos;
         var (offsetRow, offsetCol) = _worldMap.CameraOffset;
-        // 視野上限（含小數動畫時需多容忍 0.5 避免邊緣 tile pop）
+        var (offsetRowInt, offsetRowFrac) = DecomposeOffset(offsetRow);
+        var (offsetColInt, offsetColFrac) = DecomposeOffset(offsetCol);
+        // 視野上限（含小數動畫時需多容忍 0.5 避免邊緣 tile pop；sub-pixel 拖曳 frac ∈ [-0.5,+0.5] 也在此範圍內）
         var halfRows = _projection.VisibleRows / 2;
         var halfCols = _projection.VisibleCols / 2;
         const float visibilitySlack = 0.5f;
@@ -852,9 +886,10 @@ public partial class MainMapRenderer : Control
             if (node is null) continue;
             var data = _worldMap.GetTile(r, c);
 
-            // 小數 rel：基底（int）+ 整數 camera offset（Reset 鍵）+ 小數攝影機補間 offset
-            var relRow = (r - playerRow) - (float)Mathf.Round(offsetRow) + _cameraSubTileOffset.X;
-            var relCol = (c - playerCol) - (float)Mathf.Round(offsetCol) + _cameraSubTileOffset.Y;
+            // 小數 rel：基底（int）+ 整格 camera offset + 小數補間 offset(玩家移動) − 拖曳小數 offset(sub-pixel)
+            // 規格書 §3.5：拖曳小數從 rel 中減回，產生連續視覺位移避免整格 snap
+            var relRow = (r - playerRow) - offsetRowInt + _cameraSubTileOffset.X - offsetRowFrac;
+            var relCol = (c - playerCol) - offsetColInt + _cameraSubTileOffset.Y - offsetColFrac;
 
             if (relRow < -halfRows - visibilitySlack || relRow > halfRows + visibilitySlack
              || relCol < -halfCols - visibilitySlack || relCol > halfCols + visibilitySlack)
@@ -902,10 +937,12 @@ public partial class MainMapRenderer : Control
         if (_parallaxScene == null) return;
 
         var (offsetRow, offsetCol) = _worldMap.CameraOffset;
-        // 立繪盒 anchor = 玩家 tile（rel=0）；攝影機補間時把 sub-tile offset 套上
-        // → 立繪會跟著玩家 tile 一起在透視空間中滑動，不會與 tile 脫鉤。
-        var playerRelRow = -(float)Mathf.Round(offsetRow) + _cameraSubTileOffset.X;
-        var playerRelCol = -(float)Mathf.Round(offsetCol) + _cameraSubTileOffset.Y;
+        var (offsetRowInt, offsetRowFrac) = DecomposeOffset(offsetRow);
+        var (offsetColInt, offsetColFrac) = DecomposeOffset(offsetCol);
+        // 立繪盒 anchor = 玩家 tile（rel=0）；攝影機補間時把 sub-tile offset 套上，
+        // 拖曳小數 offset 也減進來，與 UpdateAllTiles 同步保持立繪與 player tile 對齊。
+        var playerRelRow = -offsetRowInt + _cameraSubTileOffset.X - offsetRowFrac;
+        var playerRelCol = -offsetColInt + _cameraSubTileOffset.Y - offsetColFrac;
 
         var halfRows = _projection.VisibleRows / 2;
         var halfCols = _projection.VisibleCols / 2;

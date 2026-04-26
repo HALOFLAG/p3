@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://d3f8ydkjone6a"]
+
+[ext_resource type="Script" path="res://scripts/Map/MinimapRenderer.cs" id="1_minimap"]
+
+[node name="Minimap" type="Control"]
+layout_mode = 3
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -110.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 150.0
+mouse_filter = 1
+
+[node name="Grid" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = -1
+offset_right = 100.0
+offset_bottom = 100.0
+mouse_filter = 1
+script = ExtResource("1_minimap")
+
+[node name="ResetButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = -1
+offset_top = 108.0
+offset_right = 100.0
+offset_bottom = 136.0
+text = "回到玩家中心"

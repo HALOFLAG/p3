@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/Map/MainMapRenderer.cs" id="1_renderer"]
 [ext_resource type="Script" path="res://scripts/Map/CameraController.cs" id="2_camera"]
 [ext_resource type="PackedScene" path="res://scenes/ui/action_trigger_popup.tscn" id="3_popup"]
+[ext_resource type="PackedScene" path="res://scenes/map/minimap.tscn" id="4_minimap"]
 
 [node name="MainMap" type="Control"]
 layout_mode = 3
@@ -26,23 +27,7 @@ mouse_filter = 2
 [node name="CameraNode" type="Node" parent="."]
 script = ExtResource("2_camera")
 
-[node name="ResetButtonContainer" type="Control" parent="."]
-layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -160.0
-offset_top = 8.0
-offset_right = -8.0
-offset_bottom = 36.0
-mouse_filter = 0
-
-[node name="ResetButton" type="Button" parent="ResetButtonContainer"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-text = "回到玩家中心"
+[node name="Minimap" parent="." instance=ExtResource("4_minimap")]
 
 [node name="ActionTriggerPopup" parent="." instance=ExtResource("3_popup")]
 layout_mode = 1
