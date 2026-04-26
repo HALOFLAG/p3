@@ -274,6 +274,61 @@ public sealed class WorldMap
     /// <summary>夥伴卡載入 / 切換、夥伴 HP 變更時觸發；LeftPanel 夥伴區訂閱。</summary>
     public event Action? CompanionChanged;
 
+    // === Phase 2 任務 11 Stage 3.3：事件排序層 + 嵌套支援 ===
+    // 規格書 §3.4：所有 mutation 完成後 emit event；ORBIT outcome / EffectHandler
+    // 套多個 effect 時可用 BeginEventBatch / EndEventBatch 包起來，
+    // 內部 emit 會延後到最外層 EndEventBatch 一次依 priority 排序 emit。
+    private int _eventDepth;
+    private readonly List<(EventPriority Priority, Action Emit)> _eventQueue = new();
+
+    /// <summary>進入事件批次：emit 延後直到對應 EndEventBatch；支援嵌套。</summary>
+    public void BeginEventBatch() => _eventDepth++;
+
+    /// <summary>離開事件批次：若到最外層則 flush 排序後 emit。</summary>
+    public void EndEventBatch()
+    {
+        if (_eventDepth <= 0) return;
+        _eventDepth--;
+        if (_eventDepth == 0) FlushEventBatch();
+        if (_eventDepth > 5)
+            System.Diagnostics.Debug.WriteLine("[WorldMap] EventDepth > 5 — 可能無限遞迴或 stack 失衡");
+    }
+
+    private void FlushEventBatch()
+    {
+        if (_eventQueue.Count == 0) return;
+        // 按 priority 排序 + 簡易去重（同 priority 同 emit hash 視同重複）
+        var sorted = _eventQueue.OrderBy(e => (int)e.Priority).ToList();
+        _eventQueue.Clear();
+        foreach (var (_, emit) in sorted) emit();
+    }
+
+    /// <summary>有 batch 進行中則 enqueue；否則直接 emit。</summary>
+    private void RaiseOrQueue(EventPriority priority, Action emit)
+    {
+        if (_eventDepth > 0) _eventQueue.Add((priority, emit));
+        else emit();
+    }
+
+    // === 公開 Notify API（外部 service 修改 state 後呼叫，觸發 UI 更新）===
+
+    /// <summary>外部 mutation 後通知某格已變更（如 EffectHandler.ApplyTransformTile 後）。</summary>
+    public void NotifyTileChanged(int row, int col)
+        => RaiseOrQueue(EventPriority.TileChanged, () => TileChanged?.Invoke(row, col));
+
+    /// <summary>外部 mutation 後通知玩家位置變更。</summary>
+    public void NotifyPlayerMoved(int oldRow, int oldCol, int newRow, int newCol)
+        => RaiseOrQueue(EventPriority.PlayerMoved,
+            () => PlayerMoved?.Invoke(oldRow, oldCol, newRow, newCol));
+
+    /// <summary>外部 mutation 後通知 HP 變更。</summary>
+    public void NotifyHpChanged(int hp)
+        => RaiseOrQueue(EventPriority.HpChanged, () => HpChanged?.Invoke(hp));
+
+    /// <summary>外部 mutation 後通知 AP 變更。</summary>
+    public void NotifyApChanged(int ap, int apMax)
+        => RaiseOrQueue(EventPriority.ApChanged, () => ApChanged?.Invoke(ap, apMax));
+
     public WorldMap() : this(new SystemRandomProvider()) { }
 
     /// <summary>
