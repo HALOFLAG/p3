@@ -15,9 +15,14 @@ public partial class TileVisual : Node2D
 
     public enum OverlayKind { None, LegalPlacement, MoveTarget, PlayerMark }
 
-    private Polygon2D? _topPolygon;   // 地形美術 + UV
-    private Polygon2D? _sidePolygon;  // 前緣下方厚度
-    private Polygon2D? _overlayPolygon; // 半透明色蓋層
+    /// <summary>側緣厚度相對前後 Y 跨距的比例。</summary>
+    private const float ThicknessRatio = 0.08f;
+
+    private Polygon2D? _topPolygon;        // 地形美術 + UV
+    private Polygon2D? _frontSidePolygon;  // 前緣下方厚度
+    private Polygon2D? _leftSidePolygon;   // 左斜邊厚度
+    private Polygon2D? _rightSidePolygon;  // 右斜邊厚度
+    private Polygon2D? _overlayPolygon;    // 半透明色蓋層
     private Area2D? _hoverArea;
     private CollisionShape2D? _collShape;
 
@@ -53,14 +58,14 @@ public partial class TileVisual : Node2D
             if (child is Node n) n.QueueFree();
         }
 
-        // 側緣（前緣下方厚度，畫在 top 之下）
-        _sidePolygon = new Polygon2D
-        {
-            Name = "SidePolygon",
-            Color = new Color(0.169f, 0.114f, 0.055f, 1f),
-            Visible = false,
-        };
-        AddChild(_sidePolygon);
+        // 側緣 3 面（左/右/前下方厚度，畫在 top 之下，給「slab 板厚」立體感）
+        var sideColor = new Color(0.169f, 0.114f, 0.055f, 1f);
+        _leftSidePolygon = new Polygon2D { Name = "LeftSidePolygon", Color = sideColor, Visible = false };
+        AddChild(_leftSidePolygon);
+        _rightSidePolygon = new Polygon2D { Name = "RightSidePolygon", Color = sideColor, Visible = false };
+        AddChild(_rightSidePolygon);
+        _frontSidePolygon = new Polygon2D { Name = "FrontSidePolygon", Color = sideColor, Visible = false };
+        AddChild(_frontSidePolygon);
 
         // 地形主面
         _topPolygon = new Polygon2D
@@ -97,7 +102,9 @@ public partial class TileVisual : Node2D
         _isPlaced = isPlaced;
         _isExplored = isExplored;
         if (_topPolygon != null) ApplyTexture();
-        if (_sidePolygon != null) _sidePolygon.Visible = isPlaced;
+        if (_frontSidePolygon != null) _frontSidePolygon.Visible = isPlaced;
+        if (_leftSidePolygon != null) _leftSidePolygon.Visible = isPlaced;
+        if (_rightSidePolygon != null) _rightSidePolygon.Visible = isPlaced;
     }
 
     public void SetOverlay(OverlayKind kind)
@@ -112,6 +119,8 @@ public partial class TileVisual : Node2D
     /// </summary>
     public void SetTileQuad(Vector2 backLeft, Vector2 backRight, Vector2 frontRight, Vector2 frontLeft)
     {
+        // 4 corner 直接保留原投影尺寸；地塊間隙由 MainMapRenderer 透過 node.Position
+        // 額外 push-apart offset 處理（避免縮小 polygon 導致 PNG 美術也被縮）。
         _backLeft = backLeft;
         _backRight = backRight;
         _frontRight = frontRight;
@@ -130,23 +139,49 @@ public partial class TileVisual : Node2D
             _overlayPolygon.Polygon = quad;
         }
 
-        if (_sidePolygon != null)
+        // === 2. 三面側緣厚度（左/右/前下方）===
+        var heightSpan = ((frontLeft.Y + frontRight.Y) - (backLeft.Y + backRight.Y)) * 0.5f;
+        var thickness = Mathf.Max(2f, Mathf.Abs(heightSpan) * ThicknessRatio);
+        var down = new Vector2(0, thickness);
+
+        if (_frontSidePolygon != null)
         {
-            // 厚度：把前緣往下推約「前後高度差的 12%」做為側面
-            var heightSpan = ((frontLeft.Y + frontRight.Y) - (backLeft.Y + backRight.Y)) * 0.5f;
-            var thickness = Mathf.Max(2f, Mathf.Abs(heightSpan) * 0.12f);
-            _sidePolygon.Polygon = new[]
+            // 前緣下方厚度（梯形寬邊）
+            _frontSidePolygon.Polygon = new[]
             {
                 frontLeft,
                 frontRight,
-                new Vector2(frontRight.X, frontRight.Y + thickness),
-                new Vector2(frontLeft.X, frontLeft.Y + thickness),
+                frontRight + down,
+                frontLeft + down,
+            };
+        }
+
+        if (_leftSidePolygon != null)
+        {
+            // 左斜邊（從 backLeft 到 frontLeft）下方厚度，平行四邊形
+            _leftSidePolygon.Polygon = new[]
+            {
+                backLeft,
+                frontLeft,
+                frontLeft + down,
+                backLeft + down,
+            };
+        }
+
+        if (_rightSidePolygon != null)
+        {
+            // 右斜邊（從 backRight 到 frontRight）下方厚度
+            _rightSidePolygon.Polygon = new[]
+            {
+                backRight,
+                frontRight,
+                frontRight + down,
+                backRight + down,
             };
         }
 
         if (_collShape != null)
         {
-            // ConvexPolygonShape2D 接受梯形；polygon 須為凸
             var shape = new ConvexPolygonShape2D { Points = quad };
             _collShape.Shape = shape;
         }

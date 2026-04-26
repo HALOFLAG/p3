@@ -26,6 +26,7 @@ public partial class MainMapRenderer : Control
     private readonly TileVisual[,] _tileNodes = new TileVisual[WorldMap.Size, WorldMap.Size];
     private Node2D? _tileLayer;
     private ProjectionParams _projection;
+    private ParallaxSceneController? _parallaxScene; // 任務 8 場景立繪
 
     // Popup / dialog
     private ActionTriggerPopup? _popup;
@@ -133,6 +134,11 @@ public partial class MainMapRenderer : Control
         {
             MoveChild(dropZone, tileLayer.GetIndex() + 1);
         }
+
+        // 任務 8：場景立繪（漂浮在玩家地塊上方）
+        _parallaxScene = new ParallaxSceneController { Name = "ParallaxScene" };
+        AddChild(_parallaxScene);
+        _parallaxScene.ZIndex = 5; // 蓋過 tile，但低於 popup/dialog
 
         // 視框尺寸可能還是 0（若被父 container 排版尚未完成）→ 等下一個 frame 重算
         CallDeferred(nameof(InitialLayout));
@@ -644,6 +650,9 @@ public partial class MainMapRenderer : Control
 
     // === Layout ===
 
+    /// <summary>地塊間 push-apart gap 比例（推力 = relCol/relRow × tileSize × 此比例）。</summary>
+    private const float TileGapRatio = 0.10f;
+
     private void UpdateAllTiles()
     {
         var (playerRow, playerCol) = _worldMap.PlayerPos;
@@ -667,8 +676,17 @@ public partial class MainMapRenderer : Control
 
             var quad = Projection.ProjectQuad(relRow, relCol, _projection);
             var center = new Vector2(quad.Center.X, quad.Center.Y);
+
+            // Push-apart：依 (relCol, relRow) 方向把 tile 推離原位，產生鄰塊間 gap
+            // 推力大小用該深度的 tile 寬 / 高度（解法 B：比例與 tile size 一致）
+            var tileWidthAtDepth = (quad.FrontRight.X - quad.FrontLeft.X);
+            var tileHeightAtDepth = ((quad.FrontLeft.Y + quad.FrontRight.Y) - (quad.BackLeft.Y + quad.BackRight.Y)) * 0.5f;
+            var pushOffset = new Vector2(
+                relCol * tileWidthAtDepth * TileGapRatio,
+                relRow * tileHeightAtDepth * TileGapRatio);
+
             node.Visible = true;
-            node.Position = center;
+            node.Position = center + pushOffset;
             node.SetTile(data.Terrain, data.IsPlaced, data.IsExplored);
             node.SetTileQuad(
                 new Vector2(quad.BackLeft.X, quad.BackLeft.Y) - center,
@@ -685,6 +703,46 @@ public partial class MainMapRenderer : Control
                 overlay = TileVisual.OverlayKind.MoveTarget;
             node.SetOverlay(overlay);
         }
+
+        UpdateParallaxScene();
+    }
+
+    /// <summary>場景立繪：跟隨玩家所在地塊（含 camera offset 與 push-apart offset），floor 與 player tile 對齊。</summary>
+    private void UpdateParallaxScene()
+    {
+        if (_parallaxScene == null) return;
+
+        var (offsetRow, offsetCol) = _worldMap.CameraOffset;
+        var playerRelRow = -(int)Mathf.Round(offsetRow);
+        var playerRelCol = -(int)Mathf.Round(offsetCol);
+
+        if (!Projection.IsVisible(playerRelRow, playerRelCol, _projection))
+        {
+            _parallaxScene.Visible = false;
+            return;
+        }
+        _parallaxScene.Visible = true;
+
+        var playerQuad = Projection.ProjectQuad(playerRelRow, playerRelCol, _projection);
+
+        // 與 player tile 同步的 push-apart offset（camera 移動時 tile 會位移，
+        // 立繪盒的 4 個 corner 也要套用相同 offset 才能保持對齊）
+        var tileWidthAtDepth = playerQuad.FrontRight.X - playerQuad.FrontLeft.X;
+        var tileHeightAtDepth = ((playerQuad.FrontLeft.Y + playerQuad.FrontRight.Y)
+                              - (playerQuad.BackLeft.Y + playerQuad.BackRight.Y)) * 0.5f;
+        var pushOffset = new Vector2(
+            playerRelCol * tileWidthAtDepth * TileGapRatio,
+            playerRelRow * tileHeightAtDepth * TileGapRatio);
+
+        _parallaxScene.Position = Vector2.Zero;
+        _parallaxScene.SetTileQuad(
+            new Vector2(playerQuad.BackLeft.X, playerQuad.BackLeft.Y) + pushOffset,
+            new Vector2(playerQuad.BackRight.X, playerQuad.BackRight.Y) + pushOffset,
+            new Vector2(playerQuad.FrontRight.X, playerQuad.FrontRight.Y) + pushOffset,
+            new Vector2(playerQuad.FrontLeft.X, playerQuad.FrontLeft.Y) + pushOffset);
+
+        var data = _worldMap.GetTile(_worldMap.PlayerPos.Row, _worldMap.PlayerPos.Col);
+        _parallaxScene.SetTerrain(data.Terrain);
     }
 
     private void EmitHudSignals()
