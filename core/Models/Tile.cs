@@ -36,4 +36,11 @@ public sealed record Tile(
     /// 每個 interaction 有獨立的 cost / effects / availability。
     /// </summary>
     public IReadOnlyList<TileInteraction> Interactions { get; init; } = Array.Empty<TileInteraction>();
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 2a：視覺對應 profile（規格書 §2.3 / §6.3）。
+    /// 缺欄位時 runtime 走 fallback 表（Terrain → MapTerrain）。
+    /// 用 <see cref="Map.TileVisualProfileResolver"/> 解析。
+    /// </summary>
+    public VisualProfile? VisualProfile { get; init; }
 }

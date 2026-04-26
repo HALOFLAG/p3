@@ -7,7 +7,8 @@
     "tags": ["village", "outdoor"],
     "allowedActionTypes": ["communication", "thinking"],
     "resources": [],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "village-store",
@@ -19,7 +20,8 @@
     "resources": [
       { "key": "oil", "name": "燈油", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "ruined-chapel",
@@ -31,7 +33,8 @@
     "resources": [
       { "key": "clue", "name": "線索碎片", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "forest-path",
@@ -43,7 +46,8 @@
     "resources": [
       { "key": "herb", "name": "草藥", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Forest" }
   },
   {
     "id": "forest-causeway",
@@ -56,7 +60,8 @@
     "resources": [
       { "key": "herb", "name": "草藥", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Forest" }
   },
   {
     "id": "misty-forest",
@@ -70,7 +75,8 @@
     ],
     "onEnter": [
       { "type": "rollCheck", "stat": "skill", "tn": 9, "onFailure": [{ "type": "drawEncounter" }] }
-    ]
+    ],
+    "visualProfile": { "terrain": "Forest" }
   },
   {
     "id": "mansion-front-yard",
@@ -80,7 +86,8 @@
     "tags": ["outdoor"],
     "allowedActionTypes": ["exploration", "thinking"],
     "resources": [],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Grass" }
   },
   {
     "id": "mansion-foyer",
@@ -92,7 +99,8 @@
     "resources": [],
     "onEnter": [
       { "type": "setFlag", "key": "mansion_entered", "value": true }
-    ]
+    ],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "mansion-parlor",
@@ -102,7 +110,8 @@
     "tags": ["indoor"],
     "allowedActionTypes": ["exploration", "thinking", "combat"],
     "resources": [],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "grand-hallway",
@@ -115,7 +124,8 @@
     "resources": [
       { "key": "clue", "name": "線索碎片", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Path" }
   },
   {
     "id": "mansion-study",
@@ -127,7 +137,8 @@
     "resources": [
       { "key": "clue", "name": "線索碎片", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "collapsed-study",
@@ -139,7 +150,8 @@
     "resources": [
       { "key": "scrap", "name": "廢料", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "upstairs-corridor",
@@ -151,7 +163,8 @@
     "resources": [],
     "onEnter": [
       { "type": "rollCheck", "stat": "skill", "tn": 10, "onFailure": [{ "type": "drawEncounter" }] }
-    ]
+    ],
+    "visualProfile": { "terrain": "Path" }
   },
   {
     "id": "storage-room",
@@ -164,7 +177,8 @@
       { "key": "oil", "name": "燈油", "perVisit": 1 },
       { "key": "scrap", "name": "廢料", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "hidden-chamber",
@@ -176,7 +190,8 @@
     "resources": [
       { "key": "clue", "name": "線索碎片", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
   },
   {
     "id": "basement-entry",
@@ -186,7 +201,8 @@
     "tags": ["indoor", "underground"],
     "allowedActionTypes": ["exploration", "thinking", "combat"],
     "resources": [],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Mountain" }
   },
   {
     "id": "underground-passage",
@@ -200,7 +216,8 @@
     ],
     "onEnter": [
       { "type": "rollCheck", "stat": "intellect", "tn": 11, "onFailure": [{ "type": "climaxTnIncrease", "amount": 1 }] }
-    ]
+    ],
+    "visualProfile": { "terrain": "Mountain" }
   },
   {
     "id": "damp-stone-stairs",
@@ -213,7 +230,8 @@
     "resources": [
       { "key": "herb", "name": "發光地衣", "perVisit": 1 }
     ],
-    "onEnter": []
+    "onEnter": [],
+    "visualProfile": { "terrain": "Water" }
   },
   {
     "id": "ritual-hall",
@@ -225,6 +243,7 @@
     "resources": [],
     "onEnter": [
       { "type": "setFlag", "key": "at_ritual_chamber", "value": true }
-    ]
+    ],
+    "visualProfile": { "terrain": "Building" }
   }
 ]

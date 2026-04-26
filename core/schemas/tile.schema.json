@@ -42,6 +42,17 @@
       "onEnter": {
         "type": "array",
         "items": { "$ref": "#/$defs/effect" }
+      },
+      "visualProfile": {
+        "description": "Phase 2 任務 11 Stage 2a：視覺對應 profile（規格書 §2.3 / §6.3）。缺欄位時 runtime fallback 走 terrain → MapTerrain 表（wilderness→Forest / town→Building / dungeon→Mountain / special→Path）。",
+        "type": "object",
+        "required": ["terrain"],
+        "properties": {
+          "terrain": { "enum": ["Forest", "Path", "Grass", "Water", "Mountain", "Building"] },
+          "minimapColor": { "type": "string", "description": "選用：自訂小地圖色塊 hex（如 #3a6830）；缺則由 MapTerrain 預設色決定" },
+          "sceneTheme": { "type": "string", "description": "選用：場景立繪主題識別字（forest-day / town-night ...）" }
+        },
+        "additionalProperties": false
       }
     }
   },
