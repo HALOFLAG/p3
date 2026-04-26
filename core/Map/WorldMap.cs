@@ -1,5 +1,6 @@
 using CardNarrative.Core.Cards;
 using CardNarrative.Core.Models;
+using CardNarrative.Core.State;
 
 namespace CardNarrative.Core.Map;
 
@@ -37,6 +38,17 @@ public sealed class WorldMap
     private readonly List<ActionCard> _hand = new();
     private readonly List<CompanionAiState> _companions = new();
 
+    // === Phase 2 任務 11 Stage 2b：dual-mode 後端 ===
+    // null = standalone（Phase 1+2 既有測試路徑，內部欄位為 source of truth）
+    // non-null = state-backed（runtime façade，GameState 為 source of truth）
+    // 詳見 docs/任務11-地塊卡變化-分析.md §4 Stage 2
+    private readonly GameState? _state;
+    private readonly CardNarrative.Core.Models.Module? _module;
+    /// <summary>state-backed 模式時暴露 GameState 參照（Stage 2c+ 與 xUnit 用）。</summary>
+    public GameState? BackingState => _state;
+    /// <summary>state-backed 模式時暴露 Module 參照。</summary>
+    public CardNarrative.Core.Models.Module? BackingModule => _module;
+
     // === Equipment 狀態（規格書 §3.4.3）===
     private readonly Dictionary<EquipmentSlot, string?> _equipped = new();
     private readonly List<string> _backpack = new();
@@ -47,14 +59,50 @@ public sealed class WorldMap
     private NpcCompanion? _companion;
     private int _companionHp;
 
-    public (int Row, int Col) PlayerPos { get; private set; } = (InitialPlayerRow, InitialPlayerCol);
+    private (int Row, int Col) _playerPos = (InitialPlayerRow, InitialPlayerCol);
+    public (int Row, int Col) PlayerPos
+    {
+        get
+        {
+            if (_state is null) return _playerPos;
+            var p = _state.CurrentPlayer.Position;
+            return (p.Y, p.X); // state X=col, Y=row
+        }
+        private set
+        {
+            if (_state is null) _playerPos = value;
+            else _state.CurrentPlayer.Position = new Position(value.Col, value.Row);
+        }
+    }
+
     public (float Row, float Col) CameraOffset { get; private set; } = (0f, 0f);
 
     public InteractionMode Mode { get; private set; } = InteractionMode.Idle;
     public MapTerrain? HeldTile { get; private set; }
 
-    public int Hp { get; private set; } = 12;
-    public int HpMax { get; private set; } = 12;
+    private int _hp = 12;
+    public int Hp
+    {
+        get => _state is null ? _hp : _state.CurrentPlayer.Hp;
+        private set
+        {
+            if (_state is null) _hp = value;
+            else _state.CurrentPlayer.Hp = value;
+        }
+    }
+
+    private int _hpMax = 12;
+    public int HpMax
+    {
+        get => _state is null ? _hpMax : _state.CurrentPlayer.HpMax;
+        private set
+        {
+            // state.CurrentPlayer.HpMax 是 init-only — state 模式下 HpMax 由
+            // GameState.CreateNew 一次定值，runtime 不應再改。WorldMap 路徑下若試圖修
+            // 視為 no-op（避免破契約），warn 由 caller 端確認。
+            if (_state is null) _hpMax = value;
+        }
+    }
 
     /// <summary>角色卡目前佔住的裝備槽位（規格書 §3.4.3 中央格 → §3-7）。預設 Head。</summary>
     public EquipmentSlot CharacterCardSlot { get; private set; } = EquipmentSlot.Head;
@@ -63,11 +111,55 @@ public sealed class WorldMap
     public int CompanionHp => _companionHp;
     public int CompanionHpMax => _companion?.Hp ?? 0;
 
-    public int Turn { get; private set; } = 1;
-    public int Ap { get; private set; } = ApMax;
+    private int _turn = 1;
+    public int Turn
+    {
+        get => _state is null ? _turn : _state.CurrentBigRound;
+        private set
+        {
+            if (_state is null) _turn = value;
+            else _state.CurrentBigRound = value;
+        }
+    }
+
+    private int _ap = ApMax;
+    public int Ap
+    {
+        get => _state is null ? _ap : _state.CurrentPlayer.ActionPoints;
+        private set
+        {
+            if (_state is null) _ap = value;
+            else _state.CurrentPlayer.ActionPoints = value;
+        }
+    }
+
     public int HandSize => _hand.Count;
 
-    public bool FirstMoveUsedThisTurn { get; private set; }
+    private bool _firstMoveUsedThisTurn;
+    /// <summary>
+    /// 本回合是否已用過首次移動。state-mode 用 PlayerState.MovesThisTurn > 0 派生
+    /// （state 沒有等價布林欄位，但 MovesThisTurn 計次提供相同語意）。
+    /// </summary>
+    public bool FirstMoveUsedThisTurn
+    {
+        get => _state is null ? _firstMoveUsedThisTurn : _state.CurrentPlayer.MovesThisTurn > 0;
+        private set
+        {
+            if (_state is null) _firstMoveUsedThisTurn = value;
+            else
+            {
+                if (value && _state.CurrentPlayer.MovesThisTurn == 0)
+                    _state.CurrentPlayer.MovesThisTurn = 1;
+                else if (!value)
+                    _state.CurrentPlayer.MovesThisTurn = 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 本回合是否已用過首次觀察。state 無等價欄位 → 兩模式皆用 WorldMap 內部欄位。
+    /// 完整 EffectsService（Task 13）後若有對應 state 欄位再 dispatch。
+    /// </summary>
     public bool FirstObserveUsedThisTurn { get; private set; }
 
     public IReadOnlyList<ActionCard> Hand => _hand;
@@ -112,6 +204,23 @@ public sealed class WorldMap
     public event Action? CompanionChanged;
 
     public WorldMap() : this(new SystemRandomProvider()) { }
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 2b：state-backed 模式建構子。
+    /// 詳見 docs/任務11-地塊卡變化-分析.md §4 Stage 2 / §9 v3 修訂。
+    /// 此模式下 Hp/Ap/Turn/PlayerPos 等 primitive 由 GameState 為唯一 source of truth；
+    /// WorldMap 仍保留標準初始化欄位，但 getter 會 dispatch 到 GameState。
+    /// </summary>
+    public WorldMap(GameState state, CardNarrative.Core.Models.Module module)
+        : this(state, module, new SystemRandomProvider()) { }
+
+    /// <summary>state-backed + 自訂 random — 主要供 xUnit 測試使用。</summary>
+    public WorldMap(GameState state, CardNarrative.Core.Models.Module module, IRandomProvider random)
+        : this(random)
+    {
+        _state = state;
+        _module = module;
+    }
 
     public WorldMap(IRandomProvider random)
     {
