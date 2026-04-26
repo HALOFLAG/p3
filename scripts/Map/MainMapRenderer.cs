@@ -79,21 +79,15 @@ public partial class MainMapRenderer : Control
     /// <summary>行動卡抽牌堆 / 棄牌堆計數變更。</summary>
     [Signal] public delegate void ActionDeckCountsChangedEventHandler(int drawCount, int discardCount);
 
+    /// <summary>裝備配置變更（任何 slot 或 backpack 變動）。LeftPanel 訂閱以重繪 3×3。</summary>
+    [Signal] public delegate void EquipmentChangedExtEventHandler();
+
     public override void _Ready()
     {
         _tileLayer = GetNode<Node2D>("TileLayer");
         var w = (float)Size.X;
         var h = (float)Size.Y;
-        _projection = Projection.Default with
-        {
-            ViewWidth = w,
-            ViewHeight = h,
-            // BaseTileSize 自適應 viewport：5×5 視野下 5 cols / 5 rows 都能容下
-            BaseTileSize = Mathf.Min(w, h) / 6f,
-            // VanishingPoint / GroundY 改為相對視框比例
-            VanishingPointY = h * 0.32f,
-            GroundY = h,
-        };
+        _projection = MakeProjection(w, h);
 
         TileVisualScene ??= ResourceLoader.Load<PackedScene>("res://scenes/map/tile_visual.tscn");
 
@@ -153,17 +147,7 @@ public partial class MainMapRenderer : Control
     {
         var w = (float)Size.X;
         var h = (float)Size.Y;
-        if (w > 0 && h > 0)
-        {
-            _projection = _projection with
-            {
-                ViewWidth = w,
-                ViewHeight = h,
-                BaseTileSize = Mathf.Min(w, h) / 6f,
-                VanishingPointY = h * 0.32f,
-                GroundY = h,
-            };
-        }
+        if (w > 0 && h > 0) _projection = MakeProjection(w, h);
         UpdateAllTiles();
         EmitHudSignals();
         AppendLog($"歡迎來到廢棄洋房。玩家位於 ({_worldMap.PlayerPos.Row},{_worldMap.PlayerPos.Col})。");
@@ -177,17 +161,34 @@ public partial class MainMapRenderer : Control
             var h = (float)Size.Y;
             if (w > 0 && h > 0)
             {
-                _projection = _projection with
-                {
-                    ViewWidth = w,
-                    ViewHeight = h,
-                    BaseTileSize = Mathf.Min(w, h) / 6f,
-                    VanishingPointY = h * 0.32f,
-                    GroundY = h,
-                };
+                _projection = MakeProjection(w, h);
                 if (_tileLayer != null && _tileNodes[0, 0] != null) UpdateAllTiles();
             }
         }
+    }
+
+    /// <summary>
+    /// 產生 7×7 視野 + 強透視（FarScale=0.55）+ 幾何尺度 Y 的投影參數。
+    /// 同欄列邊緣呈直線 + 每列 1:1：
+    ///   yRange = BaseTileSize × (1-FarScale) / K
+    ///   K = (1/FarScale)^δ - (1/FarScale)^(-δ)，δ = 0.5/visibleRows
+    ///   FarScale=0.55, visibleRows=7 → yRatio ≈ 5.27
+    /// </summary>
+    private ProjectionParams MakeProjection(float w, float h)
+    {
+        const float yRatio = 5.27f; // 幾何尺度 + 7 列 + FarScale=0.55 下的 1:1 條件
+        var idealTile = w / 7.0f;
+        var idealY = idealTile * yRatio;
+        var yRange = Mathf.Min(idealY, h);
+        var baseTile = idealY > h ? yRange / yRatio : idealTile;
+        return Projection.Default with
+        {
+            ViewWidth = w,
+            ViewHeight = h,
+            BaseTileSize = baseTile,
+            VanishingPointY = h - yRange,
+            GroundY = h,
+        };
     }
 
     public override void _ExitTree()
@@ -251,22 +252,23 @@ public partial class MainMapRenderer : Control
             var relCol = (c - playerCol) - (int)Mathf.Round(offsetCol);
             if (!Projection.IsVisible(relRow, relCol, _projection)) continue;
 
-            var p = Projection.Project(relRow, relCol, _projection);
-            var centerX = p.X + p.Width * 0.5f;
-            var centerY = p.Y + p.Height * 0.5f;
-            var halfSize = p.Width * 0.5f;
-
-            if (Mathf.Abs(localPos.X - centerX) <= halfSize
-                && Mathf.Abs(localPos.Y - centerY) <= halfSize)
+            var quad = Projection.ProjectQuad(relRow, relCol, _projection);
+            var poly = new Vector2[]
             {
-                var dx = localPos.X - centerX;
-                var dy = localPos.Y - centerY;
-                var dSq = dx * dx + dy * dy;
-                if (dSq < bestDistSq)
-                {
-                    bestDistSq = dSq;
-                    best = (r, c);
-                }
+                new(quad.BackLeft.X, quad.BackLeft.Y),
+                new(quad.BackRight.X, quad.BackRight.Y),
+                new(quad.FrontRight.X, quad.FrontRight.Y),
+                new(quad.FrontLeft.X, quad.FrontLeft.Y),
+            };
+            if (!Geometry2D.IsPointInPolygon(localPos, poly)) continue;
+
+            var dx = localPos.X - quad.Center.X;
+            var dy = localPos.Y - quad.Center.Y;
+            var dSq = dx * dx + dy * dy;
+            if (dSq < bestDistSq)
+            {
+                bestDistSq = dSq;
+                best = (r, c);
             }
         }
         return best;
@@ -309,6 +311,47 @@ public partial class MainMapRenderer : Control
         else
         {
             AppendLog($"出牌失敗：{result.Message}");
+        }
+    }
+
+    /// <summary>外部注入裝備目錄與初始背包內容（規格書 §3.4.3）。</summary>
+    public void LoadEquipmentInventory(
+        IReadOnlyDictionary<string, Equipment> catalog,
+        IEnumerable<string> initialBackpack)
+    {
+        _worldMap.LoadEquipmentInventory(catalog, initialBackpack);
+        AppendLog($"載入裝備目錄（{catalog.Count} 件，背包 {_worldMap.Backpack.Count}/{EquipmentManager.BackpackMax}）");
+    }
+
+    /// <summary>外部觸發裝備移動（LeftPanel drag-drop → 此處）。</summary>
+    public void RequestMoveEquipment(string srcKind, int srcIdx, string tgtKind, int tgtIdx)
+    {
+        MoveEquipmentResult result;
+        if (srcKind == "primary" && tgtKind == "primary")
+        {
+            result = _worldMap.MoveEquipmentSlotToSlot((EquipmentSlot)srcIdx, (EquipmentSlot)tgtIdx);
+        }
+        else if (srcKind == "primary" && tgtKind == "backpack")
+        {
+            result = _worldMap.MoveEquipmentSlotToBackpack((EquipmentSlot)srcIdx);
+        }
+        else if (srcKind == "backpack" && tgtKind == "primary")
+        {
+            result = _worldMap.MoveEquipmentBackpackToSlot(srcIdx, (EquipmentSlot)tgtIdx);
+        }
+        else
+        {
+            // backpack ↔ backpack 純位置調整（不影響邏輯，目前不實作）
+            return;
+        }
+
+        if (result == MoveEquipmentResult.Ok)
+        {
+            AppendLog($"裝備移動：{srcKind}#{srcIdx} → {tgtKind}#{tgtIdx}");
+        }
+        else
+        {
+            AppendLog($"裝備移動失敗：{result}");
         }
     }
 
@@ -365,6 +408,7 @@ public partial class MainMapRenderer : Control
         _worldMap.HandSizeChanged += OnHandSizeChanged;
         _worldMap.HandChanged += OnHandChanged;
         _worldMap.CompanionSubstituted += OnCompanionSubstituted;
+        _worldMap.EquipmentChanged += OnEquipmentChanged;
     }
 
     private void UnsubscribeWorldMap()
@@ -380,6 +424,12 @@ public partial class MainMapRenderer : Control
         _worldMap.HandSizeChanged -= OnHandSizeChanged;
         _worldMap.HandChanged -= OnHandChanged;
         _worldMap.CompanionSubstituted -= OnCompanionSubstituted;
+        _worldMap.EquipmentChanged -= OnEquipmentChanged;
+    }
+
+    private void OnEquipmentChanged()
+    {
+        EmitSignal(SignalName.EquipmentChangedExt);
     }
 
     private void OnHandChanged(IReadOnlyList<ActionCard> hand)
@@ -615,13 +665,16 @@ public partial class MainMapRenderer : Control
                 continue;
             }
 
-            var projected = Projection.Project(relRow, relCol, _projection);
+            var quad = Projection.ProjectQuad(relRow, relCol, _projection);
+            var center = new Vector2(quad.Center.X, quad.Center.Y);
             node.Visible = true;
-            node.Position = new Vector2(
-                projected.X + projected.Width * 0.5f,
-                projected.Y + projected.Height * 0.5f);
+            node.Position = center;
             node.SetTile(data.Terrain, data.IsPlaced, data.IsExplored);
-            node.SetTileSize(projected.Width);
+            node.SetTileQuad(
+                new Vector2(quad.BackLeft.X, quad.BackLeft.Y) - center,
+                new Vector2(quad.BackRight.X, quad.BackRight.Y) - center,
+                new Vector2(quad.FrontRight.X, quad.FrontRight.Y) - center,
+                new Vector2(quad.FrontLeft.X, quad.FrontLeft.Y) - center);
 
             TileVisual.OverlayKind overlay = TileVisual.OverlayKind.None;
             if (r == playerRow && c == playerCol)

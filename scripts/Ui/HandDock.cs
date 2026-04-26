@@ -38,6 +38,14 @@ public partial class HandDock : PanelContainer
         hbox.AddThemeConstantOverride("separation", 8);
         AddChild(hbox);
 
+        // 預留左側 ~220 px 寬度，讓背包展開時 (slots 1, 2 + frame 約 210 px) 不會覆蓋到手牌
+        var leftSpacer = new Control
+        {
+            CustomMinimumSize = new Vector2(220, 0),
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        hbox.AddChild(leftSpacer);
+
         _cardRow = new HBoxContainer { MouseFilter = MouseFilterEnum.Pass };
         _cardRow.AddThemeConstantOverride("separation", 6);
         hbox.AddChild(_cardRow);

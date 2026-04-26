@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using CardNarrative.Core.Models;
 using Godot;
 using HauntedManor.Scripts.Theme;
 
@@ -11,8 +13,12 @@ namespace HauntedManor.Scripts.Ui;
 /// </summary>
 public partial class LeftPanel : PanelContainer
 {
+    [Signal] public delegate void EquipmentMoveRequestedEventHandler(string sourceKind, int sourceIdx, string targetKind, int targetIdx);
+
     private ProgressBar? _heroHpBar;
     private Label? _heroHpLabel;
+    private readonly Dictionary<EquipmentSlot, EquipmentSlotView> _primarySlots = new();
+    private BackpackBar? _backpackBar;
 
     public override void _Ready()
     {
@@ -42,7 +48,7 @@ public partial class LeftPanel : PanelContainer
         BuildHeroBlock(heroBox);
 
         // === 2. 夥伴區 ===
-        AddPanelHeader(vbox, "○", Palette.Blue, "夥伴", "0/3");
+        AddPanelHeader(vbox, "○", Palette.Blue, "夥伴", "0/1");
         var companionBox = MakeContentBox();
         vbox.AddChild(companionBox);
         BuildCompanionPlaceholder(companionBox);
@@ -161,7 +167,7 @@ public partial class LeftPanel : PanelContainer
         v.AddThemeConstantOverride("separation", 6);
         parent.AddChild(v);
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 1; i++)
         {
             var slot = new PanelContainer { CustomMinimumSize = new Vector2(0, 50) };
             slot.AddThemeStyleboxOverride("panel", new StyleBoxFlat
@@ -185,35 +191,68 @@ public partial class LeftPanel : PanelContainer
 
     private void BuildEquipmentGrid(MarginContainer parent)
     {
-        var grid = new GridContainer { Columns = 3 };
-        grid.AddThemeConstantOverride("h_separation", 4);
-        grid.AddThemeConstantOverride("v_separation", 4);
-        parent.AddChild(grid);
+        var vbox = new VBoxContainer();
+        vbox.AddThemeConstantOverride("separation", 6);
+        parent.AddChild(vbox);
 
-        // 規格書 §3.4.3 九宮格槽位
-        string[] slots = {
-            "頭部", "主手", "副手",
-            "身體", "飾品", "飾品",
-            "足部", "口袋", "背包",
-        };
-        foreach (var name in slots)
+        // 規格書 §3.4.3：3×3 主槽（8 個）+ 1 背包欄
+        var grid = new GridContainer { Columns = 3 };
+        grid.AddThemeConstantOverride("h_separation", BackpackBar.Gap);
+        grid.AddThemeConstantOverride("v_separation", BackpackBar.Gap);
+        grid.SizeFlagsHorizontal = SizeFlags.ShrinkCenter;
+        vbox.AddChild(grid);
+
+        var slotDefs = new (EquipmentSlot slot, string label)[]
         {
-            var cell = new PanelContainer { CustomMinimumSize = new Vector2(80, 80) };
-            cell.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-            {
-                BgColor = Palette.Paper,
-                BorderColor = Palette.InkLight,
-                BorderWidthLeft = 1, BorderWidthRight = 1,
-                BorderWidthTop = 1, BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 2, CornerRadiusTopRight = 2,
-                CornerRadiusBottomLeft = 2, CornerRadiusBottomRight = 2,
-            });
-            var l = MakeColoredLabel(name, 10, Palette.OrnamentInk);
-            l.HorizontalAlignment = HorizontalAlignment.Center;
-            l.VerticalAlignment = VerticalAlignment.Center;
-            cell.AddChild(l);
-            grid.AddChild(cell);
+            (EquipmentSlot.Head, "頭部"),
+            (EquipmentSlot.Weapon, "主手"),
+            (EquipmentSlot.OffHand, "副手"),
+            (EquipmentSlot.Body, "身體"),
+            (EquipmentSlot.AccessoryA, "飾品 A"),
+            (EquipmentSlot.AccessoryB, "飾品 B"),
+            (EquipmentSlot.Feet, "足部"),
+            (EquipmentSlot.Utility, "口袋"),
+        };
+
+        foreach (var (slot, label) in slotDefs)
+        {
+            var view = new EquipmentSlotView();
+            grid.AddChild(view);
+            view.ConfigurePrimary(slot, label);
+            view.EquipmentDropped += OnEquipmentDropped;
+            _primarySlots[slot] = view;
         }
+        // 第 9 格：背包欄（摺疊狀態 = 1 格寬 + `>` 按鈕；展開時向右浮出）
+        _backpackBar = new BackpackBar();
+        grid.AddChild(_backpackBar);
+        _backpackBar.EquipmentDropped += OnEquipmentDropped;
+    }
+
+    private void OnEquipmentDropped(string sourceKind, int sourceIdx, string targetKind, int targetIdx)
+    {
+        EmitSignal(SignalName.EquipmentMoveRequested, sourceKind, sourceIdx, targetKind, targetIdx);
+    }
+
+    /// <summary>由 MainBootstrap 提供 root-level overlay，給 BackpackBar 在展開時 reparent overflow content。</summary>
+    public void SetBackpackOverlay(Control overlay)
+    {
+        _backpackBar?.SetTopOverlay(overlay);
+    }
+
+    public void OnEquipmentChanged(
+        IReadOnlyDictionary<EquipmentSlot, string?> equipped,
+        IReadOnlyList<string> backpack,
+        IReadOnlyDictionary<string, Equipment> catalog)
+    {
+        foreach (var (slot, view) in _primarySlots)
+        {
+            equipped.TryGetValue(slot, out var eqId);
+            Equipment? item = null;
+            if (eqId is not null) catalog.TryGetValue(eqId, out item);
+            view.SetEquipment(eqId, item);
+            view.Catalog = catalog;
+        }
+        _backpackBar?.UpdateContents(backpack, catalog);
     }
 
     public void OnHpChanged(int hp, int hpMax)

@@ -37,6 +37,11 @@ public sealed class WorldMap
     private readonly List<ActionCard> _hand = new();
     private readonly List<CompanionAiState> _companions = new();
 
+    // === Equipment 狀態（規格書 §3.4.3）===
+    private readonly Dictionary<EquipmentSlot, string?> _equipped = new();
+    private readonly List<string> _backpack = new();
+    private readonly Dictionary<string, Equipment> _equipmentCatalog = new();
+
     public (int Row, int Col) PlayerPos { get; private set; } = (InitialPlayerRow, InitialPlayerCol);
     public (float Row, float Col) CameraOffset { get; private set; } = (0f, 0f);
 
@@ -58,6 +63,13 @@ public sealed class WorldMap
     public int ActionDiscardCount => _actionDeck.DiscardCount;
     public IReadOnlyList<CompanionAiState> Companions => _companions;
 
+    /// <summary>當前裝備配置（slot → equipmentId）。Read-only 對外。</summary>
+    public IReadOnlyDictionary<EquipmentSlot, string?> Equipped => _equipped;
+    /// <summary>背包內容（read-only）。</summary>
+    public IReadOnlyList<string> Backpack => _backpack;
+    /// <summary>裝備目錄（id → Equipment）。</summary>
+    public IReadOnlyDictionary<string, Equipment> EquipmentCatalog => _equipmentCatalog;
+
     public IReadOnlyList<MapTerrain> NextTilePreview => _tileDeck.Take(2).ToArray();
     public int RemainingTiles => _tileDeck.Count;
 
@@ -78,6 +90,9 @@ public sealed class WorldMap
     /// <summary>AP 代消耗發生：傳代消耗的同伴。</summary>
     public event Action<CompanionAiState>? CompanionSubstituted;
 
+    /// <summary>裝備配置變更（任何 slot 或 backpack 變動）。</summary>
+    public event Action? EquipmentChanged;
+
     public WorldMap() : this(new SystemRandomProvider()) { }
 
     public WorldMap(IRandomProvider random)
@@ -87,6 +102,16 @@ public sealed class WorldMap
 
         _companions.Add(new CompanionAiState("companion-a", "夥伴 A", CompanionApMax));
         _companions.Add(new CompanionAiState("companion-b", "夥伴 B", CompanionApMax));
+
+        // 裝備 8 個主槽預設為 null（空）
+        foreach (EquipmentSlot s in new[] {
+            EquipmentSlot.Head, EquipmentSlot.Weapon, EquipmentSlot.OffHand,
+            EquipmentSlot.Body, EquipmentSlot.AccessoryA, EquipmentSlot.AccessoryB,
+            EquipmentSlot.Feet, EquipmentSlot.Utility,
+        })
+        {
+            _equipped[s] = null;
+        }
 
         for (int r = 0; r < Size; r++)
         for (int c = 0; c < Size; c++)
@@ -104,6 +129,45 @@ public sealed class WorldMap
         _actionDeck.LoadInitial(cards);
         _hand.Clear();
         DrawToHandLimit();
+    }
+
+    /// <summary>注入裝備目錄 + 起始背包內容（規格書 §3.4.3 獲得即入背包）。</summary>
+    public void LoadEquipmentInventory(
+        IReadOnlyDictionary<string, Equipment> catalog,
+        IEnumerable<string> initialBackpack)
+    {
+        _equipmentCatalog.Clear();
+        foreach (var (id, eq) in catalog) _equipmentCatalog[id] = eq;
+        _backpack.Clear();
+        foreach (var id in initialBackpack)
+        {
+            if (_backpack.Count >= EquipmentManager.BackpackMax) break;
+            if (!_equipmentCatalog.ContainsKey(id)) continue;
+            _backpack.Add(id);
+        }
+        EquipmentChanged?.Invoke();
+    }
+
+    public MoveEquipmentResult MoveEquipmentSlotToSlot(EquipmentSlot from, EquipmentSlot to)
+    {
+        var result = EquipmentManager.MoveSlotToSlot(_equipped, _equipmentCatalog, from, to);
+        if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
+        return result;
+    }
+
+    public MoveEquipmentResult MoveEquipmentSlotToBackpack(EquipmentSlot from)
+    {
+        var result = EquipmentManager.MoveSlotToBackpack(_equipped, _backpack, from);
+        if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
+        return result;
+    }
+
+    public MoveEquipmentResult MoveEquipmentBackpackToSlot(int backpackIndex, EquipmentSlot to)
+    {
+        var result = EquipmentManager.MoveBackpackToSlot(
+            _equipped, _backpack, _equipmentCatalog, backpackIndex, to);
+        if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
+        return result;
     }
 
     private void DrawToHandLimit()

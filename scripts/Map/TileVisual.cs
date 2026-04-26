@@ -5,19 +5,21 @@ namespace HauntedManor.Scripts.Map;
 
 /// <summary>
 /// Phase 1 Task 2/4/5 — 單一地塊節點（規格書 §5.1.3 / §5.1.4）。
-/// 負責：紋理切換、hover 高亮、click 事件外送、合法區/移動目標 overlay。
-/// 由 MainMapRenderer instance、定位、設定狀態。
+/// v2：以 Polygon2D + UV mapping 渲染為傾斜向前的梯形（後窄前寬），
+/// 取代原本軸對齊 Sprite2D。MainMapRenderer 透過 SetTileQuad(4 corners) 設定形狀。
 /// </summary>
 public partial class TileVisual : Node2D
 {
-    /// <summary>地塊被點擊。Payload：(row, col)。</summary>
     [Signal]
     public delegate void TileClickedEventHandler(int row, int col);
 
-    private Sprite2D? _topSprite;
-    private ColorRect? _sideFace;
+    public enum OverlayKind { None, LegalPlacement, MoveTarget, PlayerMark }
+
+    private Polygon2D? _topPolygon;   // 地形美術 + UV
+    private Polygon2D? _sidePolygon;  // 前緣下方厚度
+    private Polygon2D? _overlayPolygon; // 半透明色蓋層
     private Area2D? _hoverArea;
-    private ColorRect? _overlay;
+    private CollisionShape2D? _collShape;
 
     private MapTerrain _terrain;
     private bool _isPlaced;
@@ -25,10 +27,11 @@ public partial class TileVisual : Node2D
     private bool _isHovered;
     private OverlayKind _overlayKind = OverlayKind.None;
 
+    // 最後一次 SetTileQuad 的 4 角（local 座標，TileVisual 中心為原點）
+    private Vector2 _backLeft, _backRight, _frontRight, _frontLeft;
+
     public int Row { get; set; }
     public int Col { get; set; }
-
-    public enum OverlayKind { None, LegalPlacement, MoveTarget, PlayerMark }
 
     private static readonly System.Collections.Generic.Dictionary<MapTerrain, string> TerrainTexturePaths = new()
     {
@@ -44,32 +47,57 @@ public partial class TileVisual : Node2D
 
     public override void _Ready()
     {
-        _topSprite = GetNode<Sprite2D>("TopSprite");
-        _sideFace = GetNode<ColorRect>("SideFace");
-        _hoverArea = GetNode<Area2D>("HoverArea");
-
-        // 修 Bug 2 part A：複製 RectangleShape2D 避免 81 個 instance 共用同一個 SubResource
-        var collShape = _hoverArea.GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
-        if (collShape?.Shape != null)
+        // 場景檔可能還掛著舊的 Sprite2D / SideFace ColorRect，全部移除
+        foreach (var child in GetChildren())
         {
-            collShape.Shape = (Shape2D)collShape.Shape.Duplicate();
+            if (child is Node n) n.QueueFree();
         }
+
+        // 側緣（前緣下方厚度，畫在 top 之下）
+        _sidePolygon = new Polygon2D
+        {
+            Name = "SidePolygon",
+            Color = new Color(0.169f, 0.114f, 0.055f, 1f),
+            Visible = false,
+        };
+        AddChild(_sidePolygon);
+
+        // 地形主面
+        _topPolygon = new Polygon2D
+        {
+            Name = "TopPolygon",
+            Color = Colors.White,
+        };
+        AddChild(_topPolygon);
+
+        // Overlay 蓋層
+        _overlayPolygon = new Polygon2D
+        {
+            Name = "OverlayPolygon",
+            Visible = false,
+        };
+        AddChild(_overlayPolygon);
+
+        // Click 命中區
+        _hoverArea = new Area2D { Name = "HoverArea", InputPickable = true };
+        AddChild(_hoverArea);
+        _collShape = new CollisionShape2D { Name = "CollisionShape2D" };
+        _hoverArea.AddChild(_collShape);
 
         _hoverArea.MouseEntered += OnMouseEntered;
         _hoverArea.MouseExited += OnMouseExited;
         _hoverArea.InputEvent += OnAreaInput;
 
-        EnsureOverlay();
         ApplyTexture();
     }
 
-    /// <summary>由 MainMapRenderer 在 layout 時呼叫。</summary>
     public void SetTile(MapTerrain terrain, bool isPlaced, bool isExplored)
     {
         _terrain = terrain;
         _isPlaced = isPlaced;
         _isExplored = isExplored;
-        if (_topSprite != null) ApplyTexture();
+        if (_topPolygon != null) ApplyTexture();
+        if (_sidePolygon != null) _sidePolygon.Visible = isPlaced;
     }
 
     public void SetOverlay(OverlayKind kind)
@@ -78,48 +106,49 @@ public partial class TileVisual : Node2D
         UpdateOverlay();
     }
 
-    public void SetTileSize(float size)
+    /// <summary>
+    /// 設定地塊 4 角（在 TileVisual 的 local 座標系，原點為 TileVisual.Position）。
+    /// 順序：後左 → 後右 → 前右 → 前左（順時針）。
+    /// </summary>
+    public void SetTileQuad(Vector2 backLeft, Vector2 backRight, Vector2 frontRight, Vector2 frontLeft)
     {
-        var halfSize = size * 0.5f;
+        _backLeft = backLeft;
+        _backRight = backRight;
+        _frontRight = frontRight;
+        _frontLeft = frontLeft;
 
-        // 修 Bug 1：sprite 紋理縮放只在有紋理時做；其餘元素的 size 設定都應該照常執行
-        if (_topSprite?.Texture != null)
+        var quad = new[] { backLeft, backRight, frontRight, frontLeft };
+
+        if (_topPolygon != null)
         {
-            var textureSize = _topSprite.Texture.GetSize();
-            var baseSize = Mathf.Max(textureSize.X, textureSize.Y);
-            if (baseSize > 0f)
+            _topPolygon.Polygon = quad;
+            UpdateTopPolygonUv();
+        }
+
+        if (_overlayPolygon != null)
+        {
+            _overlayPolygon.Polygon = quad;
+        }
+
+        if (_sidePolygon != null)
+        {
+            // 厚度：把前緣往下推約「前後高度差的 12%」做為側面
+            var heightSpan = ((frontLeft.Y + frontRight.Y) - (backLeft.Y + backRight.Y)) * 0.5f;
+            var thickness = Mathf.Max(2f, Mathf.Abs(heightSpan) * 0.12f);
+            _sidePolygon.Polygon = new[]
             {
-                var scale = size / baseSize;
-                _topSprite.Scale = new Vector2(scale, scale);
-            }
+                frontLeft,
+                frontRight,
+                new Vector2(frontRight.X, frontRight.Y + thickness),
+                new Vector2(frontLeft.X, frontLeft.Y + thickness),
+            };
         }
 
-        if (_sideFace != null)
+        if (_collShape != null)
         {
-            var sideHeight = size * 0.08f;
-            _sideFace.OffsetLeft = -halfSize;
-            _sideFace.OffsetRight = halfSize;
-            _sideFace.OffsetTop = halfSize;
-            _sideFace.OffsetBottom = halfSize + sideHeight;
-            _sideFace.Visible = _isPlaced; // 未放格不顯示厚度
-        }
-
-        if (_overlay != null)
-        {
-            _overlay.OffsetLeft = -halfSize;
-            _overlay.OffsetRight = halfSize;
-            _overlay.OffsetTop = -halfSize;
-            _overlay.OffsetBottom = halfSize;
-        }
-
-        // 修 Bug 2 part B：collision shape 同步縮放，與視覺一致避免重疊吃錯點擊
-        if (_hoverArea != null)
-        {
-            var collShape = _hoverArea.GetNodeOrNull<CollisionShape2D>("CollisionShape2D");
-            if (collShape?.Shape is RectangleShape2D rect)
-            {
-                rect.Size = new Vector2(size, size);
-            }
+            // ConvexPolygonShape2D 接受梯形；polygon 須為凸
+            var shape = new ConvexPolygonShape2D { Points = quad };
+            _collShape.Shape = shape;
         }
     }
 
@@ -139,68 +168,78 @@ public partial class TileVisual : Node2D
     {
         if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
         {
-            GD.Print($"[TileVisual] click ({Row},{Col})");
             EmitSignal(SignalName.TileClicked, Row, Col);
         }
     }
 
-    private void EnsureOverlay()
-    {
-        _overlay = GetNodeOrNull<ColorRect>("Overlay");
-        if (_overlay != null) return;
-
-        _overlay = new ColorRect
-        {
-            Name = "Overlay",
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            Visible = false,
-        };
-        AddChild(_overlay);
-        UpdateOverlay();
-    }
-
     private void UpdateOverlay()
     {
-        if (_overlay is null) return;
+        if (_overlayPolygon is null) return;
         switch (_overlayKind)
         {
             case OverlayKind.None:
-                _overlay.Visible = false;
+                _overlayPolygon.Visible = false;
                 break;
             case OverlayKind.LegalPlacement:
-                _overlay.Color = new Color(0.4f, 1.0f, 0.4f, 0.35f); // 綠色透明
-                _overlay.Visible = true;
+                _overlayPolygon.Color = new Color(0.4f, 1.0f, 0.4f, 0.35f);
+                _overlayPolygon.Visible = true;
                 break;
             case OverlayKind.MoveTarget:
-                _overlay.Color = new Color(1.0f, 0.85f, 0.2f, 0.35f); // 黃色透明
-                _overlay.Visible = true;
+                _overlayPolygon.Color = new Color(1.0f, 0.85f, 0.2f, 0.35f);
+                _overlayPolygon.Visible = true;
                 break;
             case OverlayKind.PlayerMark:
-                _overlay.Color = new Color(1.0f, 0.3f, 0.3f, 0.30f); // 玩家位置紅
-                _overlay.Visible = true;
+                _overlayPolygon.Color = new Color(1.0f, 0.3f, 0.3f, 0.30f);
+                _overlayPolygon.Visible = true;
                 break;
         }
     }
 
     private void ApplyTexture()
     {
-        if (_topSprite is null) return;
+        if (_topPolygon is null) return;
         if (!_isPlaced)
         {
-            // 未放置格 → 完全透明（顯示空地，但保留 hover area 以便 MapExpand 可放置）
-            _topSprite.Texture = null;
+            _topPolygon.Texture = null;
+            _topPolygon.Color = new Color(1, 1, 1, 0); // 完全透明，但保留 click area
             return;
         }
         var path = _isExplored && TerrainTexturePaths.TryGetValue(_terrain, out var p)
             ? p
             : CardBackPath;
-        _topSprite.Texture = ResourceLoader.Load<Texture2D>(path);
+        _topPolygon.Texture = ResourceLoader.Load<Texture2D>(path);
+        _topPolygon.Color = Colors.White;
+        UpdateTopPolygonUv();
         UpdateModulate();
+    }
+
+    /// <summary>
+    /// 把 4 角 polygon 對應到 texture 的 4 個像素角。
+    /// Polygon2D.Uv 是「texture 像素座標」，不是 normalized [0,1]，
+    /// 所以要乘上 texture size。順序：back-left=(0,0), back-right=(W,0),
+    /// front-right=(W,H), front-left=(0,H) — PNG 上半 illustration 對到地塊後緣。
+    /// </summary>
+    private void UpdateTopPolygonUv()
+    {
+        if (_topPolygon is null) return;
+        if (_topPolygon.Texture is null)
+        {
+            _topPolygon.UV = System.Array.Empty<Vector2>();
+            return;
+        }
+        var texSize = _topPolygon.Texture.GetSize();
+        _topPolygon.UV = new[]
+        {
+            new Vector2(0, 0),
+            new Vector2(texSize.X, 0),
+            new Vector2(texSize.X, texSize.Y),
+            new Vector2(0, texSize.Y),
+        };
     }
 
     private void UpdateModulate()
     {
-        if (_topSprite is null) return;
-        _topSprite.Modulate = _isHovered ? new Color(1.25f, 1.25f, 1.25f) : Colors.White;
+        if (_topPolygon is null) return;
+        _topPolygon.Modulate = _isHovered ? new Color(1.25f, 1.25f, 1.25f) : Colors.White;
     }
 }

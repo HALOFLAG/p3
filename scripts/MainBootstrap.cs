@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using CardNarrative.Core.Models;
 using CardNarrative.Core.Services;
@@ -82,6 +83,23 @@ public partial class MainBootstrap : Control
         if (leftPanel != null)
         {
             mainMap.HpChangedExt += leftPanel.OnHpChanged;
+            // 裝備：拖曳請求 → MainMap；MainMap 變更 → 重繪 LeftPanel
+            leftPanel.EquipmentMoveRequested += mainMap.RequestMoveEquipment;
+            mainMap.EquipmentChangedExt += () => leftPanel.OnEquipmentChanged(
+                mainMap.WorldMap.Equipped,
+                mainMap.WorldMap.Backpack,
+                mainMap.WorldMap.EquipmentCatalog);
+
+            // 背包展開時把 slots 1, 2 + frame reparent 到此 overlay，
+            // 避開父層 grid cell 的 hit-test rect 限制（讓 drag 在展開區域可用）
+            var backpackOverlay = new Control
+            {
+                Name = "BackpackOverlay",
+                MouseFilter = MouseFilterEnum.Ignore,
+            };
+            AddChild(backpackOverlay);
+            backpackOverlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+            leftPanel.SetBackpackOverlay(backpackOverlay);
         }
 
         if (rightPanel != null)
@@ -143,6 +161,12 @@ public partial class MainBootstrap : Control
                     deck = success.Module.ActionCards.Values.Take(8).ToList();
                 mainMap.LoadActionDeck(deck);
                 GD.Print($"[MainBootstrap] 載入模組成功：{deck.Count} 張行動卡進入牌堆。");
+
+                // 裝備：丟前 3 件進背包當 demo（規格書 §3.4.3 獲得即入背包）
+                var equipmentCatalog = success.Module.Equipment;
+                var initialBackpack = equipmentCatalog.Values.Take(3).Select(e => e.Id).ToList();
+                mainMap.LoadEquipmentInventory(equipmentCatalog, initialBackpack);
+                GD.Print($"[MainBootstrap] 載入裝備目錄：{equipmentCatalog.Count} 件，初始背包 {initialBackpack.Count} 件。");
             }
             else if (result is ModuleLoadResult.Failure fail)
             {

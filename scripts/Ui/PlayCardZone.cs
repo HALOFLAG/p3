@@ -94,7 +94,7 @@ public partial class PlayCardZone : Control
                 LayoutSlot();
                 break;
             case NotificationDragBegin:
-                if (_dropSlot != null)
+                if (_dropSlot != null && IsActionCardData(GetViewport().GuiGetDragData()))
                 {
                     LayoutSlot();
                     _dropSlot.Visible = true;
