@@ -404,8 +404,11 @@ public partial class MainBootstrap : Control
                 var handler = new EffectHandler();
                 foreach (var effect in outcome.Effects)
                 {
+                    // Stage 4：transform 類 effect 套用前先抓 OLD terrain，套用後 emit
+                    // TileTransformed (含 oldTerrain/newTerrain) 給 UI 動畫用。
+                    var preState = CapturePreEffectState(effect);
                     handler.Apply(effect, _gameState, _module);
-                    NotifyWorldMapAfterEffect(effect, worldMap);
+                    NotifyWorldMapAfterEffect(effect, worldMap, preState);
                 }
             }
             finally
@@ -417,22 +420,31 @@ public partial class MainBootstrap : Control
         _orbit.RemoveById(eventId);
     }
 
-    /// <summary>EffectHandler 套完後，依 effect 型別通知 WorldMap UI 更新對應格 / HUD。</summary>
-    private void NotifyWorldMapAfterEffect(EffectBase effect, CardNarrative.Core.Map.WorldMap worldMap)
+    /// <summary>
+    /// Stage 4 輔助：transform 類 effect 套用「前」的 state snapshot
+    /// （只記需要 emit TileTransformed 用的欄位）。
+    /// </summary>
+    private sealed record PreEffectSnapshot(
+        // TransformTileEffect / TransformTilesByTagEffect 受影響格的 (row, col, oldTerrain) 清單
+        IReadOnlyList<(int Row, int Col, CardNarrative.Core.Map.MapTerrain OldTerrain)> AffectedTiles);
+
+    private PreEffectSnapshot? CapturePreEffectState(EffectBase effect)
     {
-        if (_gameState is null || _module is null) return;
+        if (_gameState is null || _module is null) return null;
         switch (effect)
         {
             case TransformTileEffect tt:
                 {
                     int x = tt.X ?? _gameState.CurrentPlayer.Position.X;
                     int y = tt.Y ?? _gameState.CurrentPlayer.Position.Y;
-                    worldMap.NotifyTileChanged(y, x); // row=Y, col=X
-                    break;
+                    if (!_gameState.TileMap.TryGetValue((x, y), out var placed)) return null;
+                    if (!_module.Tiles.TryGetValue(placed.TileId, out var tileDef)) return null;
+                    var oldTerrain = CardNarrative.Core.Map.TileVisualProfileResolver.ResolveTerrain(tileDef);
+                    return new PreEffectSnapshot(new[] { (y, x, oldTerrain) });
                 }
             case TransformTilesByTagEffect tbt:
                 {
-                    // 批次轉變：對每個符合 tags 的已放置格 emit TileChanged
+                    var list = new List<(int, int, CardNarrative.Core.Map.MapTerrain)>();
                     foreach (var (key, placed) in _gameState.TileMap)
                     {
                         if (!_module.Tiles.TryGetValue(placed.TileId, out var tile)) continue;
@@ -441,13 +453,59 @@ public partial class MainBootstrap : Control
                         {
                             if (!tile.Tags.Contains(tag)) { allMatch = false; break; }
                         }
-                        if (allMatch) worldMap.NotifyTileChanged(key.Y, key.X);
+                        if (!allMatch) continue;
+                        var oldTerrain = CardNarrative.Core.Map.TileVisualProfileResolver.ResolveTerrain(tile);
+                        list.Add((key.Y, key.X, oldTerrain));
+                    }
+                    return new PreEffectSnapshot(list);
+                }
+        }
+        return null;
+    }
+
+    /// <summary>EffectHandler 套完後，依 effect 型別通知 WorldMap UI 更新對應格 / HUD。</summary>
+    private void NotifyWorldMapAfterEffect(EffectBase effect, CardNarrative.Core.Map.WorldMap worldMap, PreEffectSnapshot? preState)
+    {
+        if (_gameState is null || _module is null) return;
+        switch (effect)
+        {
+            case TransformTileEffect:
+                {
+                    if (preState is null) return;
+                    foreach (var (row, col, oldTerrain) in preState.AffectedTiles)
+                    {
+                        // priority TileChanged(10) → TileTransformed(70)：紋理先換、再閃爍
+                        worldMap.NotifyTileChanged(row, col);
+                        var newTerrain = ResolveCurrentTerrain(row, col);
+                        if (newTerrain.HasValue)
+                            worldMap.NotifyTileTransformed(row, col, oldTerrain, newTerrain.Value);
+                    }
+                    break;
+                }
+            case TransformTilesByTagEffect:
+                {
+                    if (preState is null) return;
+                    foreach (var (row, col, oldTerrain) in preState.AffectedTiles)
+                    {
+                        worldMap.NotifyTileChanged(row, col);
+                        var newTerrain = ResolveCurrentTerrain(row, col);
+                        if (newTerrain.HasValue)
+                            worldMap.NotifyTileTransformed(row, col, oldTerrain, newTerrain.Value);
                     }
                     break;
                 }
             // 其他 effect（SetFlag/GrantResource/ClimaxTn/...）目前不需要 WorldMap UI 通知；
             // GrantEquipment / TileProgress / TriggerBattle 留 Task 12+ 接 UI 時補
         }
+    }
+
+    /// <summary>從 state.TileMap 反查指定 (row, col) 的當前 MapTerrain（state-mode 用）。</summary>
+    private CardNarrative.Core.Map.MapTerrain? ResolveCurrentTerrain(int row, int col)
+    {
+        if (_gameState is null || _module is null) return null;
+        if (!_gameState.TileMap.TryGetValue((col, row), out var placed)) return null;
+        if (!_module.Tiles.TryGetValue(placed.TileId, out var tileDef)) return null;
+        return CardNarrative.Core.Map.TileVisualProfileResolver.ResolveTerrain(tileDef);
     }
 
     /// <summary>

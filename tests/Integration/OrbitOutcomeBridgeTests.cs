@@ -140,4 +140,52 @@ public class OrbitOutcomeBridgeTests
         // flush 後依 priority asc：TileChanged(10) → HpChanged(30) ×2
         emitOrder.Should().ContainInOrder("TileChanged", "HpChanged", "HpChanged");
     }
+
+    // === Stage 4：transformTile → TileTransformed 完整鏈條 ===
+
+    [Fact]
+    public void Stage4_TransformTileEffect_EmitsTileTransformedWithOldAndNewTerrain()
+    {
+        var (module, state, map) = NewStateBackedRuntime();
+        // 起始 (4,4) = village-square (visualProfile=Building)
+        state.TileMap[(4, 4)].TileId.Should().Be("village-square");
+
+        // 模擬 MainBootstrap.OnEventResolved 完整流程：
+        // 1. 抓 OLD terrain
+        // 2. EffectHandler.Apply
+        // 3. NotifyTileChanged + NotifyTileTransformed
+        var transformedEvents = new List<(int row, int col, MapTerrain oldT, MapTerrain newT)>();
+        map.TileTransformed += (r, c, o, n) => transformedEvents.Add((r, c, o, n));
+
+        var effect = new TransformTileEffect("forest-path", X: 4, Y: 4);
+
+        map.BeginEventBatch();
+        try
+        {
+            // 抓 OLD terrain
+            var oldTile = module.Tiles[state.TileMap[(4, 4)].TileId];
+            var oldTerrain = TileVisualProfileResolver.ResolveTerrain(oldTile);
+
+            new EffectHandler().Apply(effect, state, module);
+
+            // 抓 NEW terrain（state 已 mutate）
+            var newTile = module.Tiles[state.TileMap[(4, 4)].TileId];
+            var newTerrain = TileVisualProfileResolver.ResolveTerrain(newTile);
+
+            map.NotifyTileChanged(4, 4);
+            map.NotifyTileTransformed(4, 4, oldTerrain, newTerrain);
+        }
+        finally
+        {
+            map.EndEventBatch();
+        }
+
+        // 驗證事件 emit 一次，攜帶正確的 Building → Forest
+        transformedEvents.Should().HaveCount(1);
+        transformedEvents[0].Should().Be((4, 4, MapTerrain.Building, MapTerrain.Forest));
+
+        // state 也已 mutate
+        state.TileMap[(4, 4)].TileId.Should().Be("forest-path");
+        map.GetTile(4, 4).Terrain.Should().Be(MapTerrain.Forest);
+    }
 }

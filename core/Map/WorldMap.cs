@@ -249,6 +249,13 @@ public sealed class WorldMap
     public int RemainingTiles => _state is null ? _tileDeck.Count : _state.TileDeck.Count;
 
     public event Action<int, int>? TileChanged;
+    /// <summary>
+    /// Phase 2 任務 11 Stage 4：地塊轉變專屬事件（規格書 §1.5 / §2.4）。
+    /// 由 ORBIT outcome 套用 TransformTileEffect 後觸發，攜帶 (row, col, oldTerrain, newTerrain)。
+    /// 目的：MainMapRenderer 可訂閱此事件播翻牌 / 閃爍動畫，與一般 TileChanged 區分。
+    /// MinimapRenderer / ParallaxScene 仍用 TileChanged 自動覆色 / 切場景，無須特別訂閱本事件。
+    /// </summary>
+    public event Action<int, int, MapTerrain, MapTerrain>? TileTransformed;
     public event Action<int, int, int, int>? PlayerMoved;
     public event Action? CameraOffsetChanged;
     public event Action? ModeChanged;
@@ -315,6 +322,17 @@ public sealed class WorldMap
     /// <summary>外部 mutation 後通知某格已變更（如 EffectHandler.ApplyTransformTile 後）。</summary>
     public void NotifyTileChanged(int row, int col)
         => RaiseOrQueue(EventPriority.TileChanged, () => TileChanged?.Invoke(row, col));
+
+    /// <summary>
+    /// Stage 4：通知某格剛被 transformTile 變化（攜帶舊/新 MapTerrain）。
+    /// MainMapRenderer 訂閱此事件觸發翻牌 / 閃爍動畫；
+    /// 一般渲染由 TileChanged 處理，本事件不取代之。
+    /// 呼叫端應同時呼 NotifyTileChanged（因 priority TileChanged=10 早於 TileTransformed=70，
+    /// 紋理先換、再閃爍）。
+    /// </summary>
+    public void NotifyTileTransformed(int row, int col, MapTerrain oldTerrain, MapTerrain newTerrain)
+        => RaiseOrQueue(EventPriority.TileTransformed,
+            () => TileTransformed?.Invoke(row, col, oldTerrain, newTerrain));
 
     /// <summary>外部 mutation 後通知玩家位置變更。</summary>
     public void NotifyPlayerMoved(int oldRow, int oldCol, int newRow, int newCol)

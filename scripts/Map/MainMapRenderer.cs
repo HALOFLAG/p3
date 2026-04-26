@@ -563,6 +563,7 @@ public partial class MainMapRenderer : Control
     private void SubscribeWorldMap()
     {
         _worldMap.TileChanged += OnTileChanged;
+        _worldMap.TileTransformed += OnTileTransformed;
         _worldMap.PlayerMoved += OnPlayerMoved;
         _worldMap.CameraOffsetChanged += OnWorldCameraOffsetChanged;
         _worldMap.ModeChanged += OnModeChanged;
@@ -581,6 +582,7 @@ public partial class MainMapRenderer : Control
     private void UnsubscribeWorldMap()
     {
         _worldMap.TileChanged -= OnTileChanged;
+        _worldMap.TileTransformed -= OnTileTransformed;
         _worldMap.PlayerMoved -= OnPlayerMoved;
         _worldMap.CameraOffsetChanged -= OnWorldCameraOffsetChanged;
         _worldMap.ModeChanged -= OnModeChanged;
@@ -594,6 +596,18 @@ public partial class MainMapRenderer : Control
         _worldMap.EquipmentChanged -= OnEquipmentChanged;
         _worldMap.CharacterChanged -= OnCharacterChangedInternal;
         _worldMap.CompanionChanged -= OnCompanionChangedInternal;
+    }
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 4：地塊轉變 → 對應 TileVisual 觸發翻牌動畫。
+    /// 一般紋理切換已由 TileChanged → UpdateAllTiles 處理；本 handler 只加視覺特效。
+    /// </summary>
+    private void OnTileTransformed(int row, int col, MapTerrain oldTerrain, MapTerrain newTerrain)
+    {
+        if (row < 0 || row >= WorldMap.Size || col < 0 || col >= WorldMap.Size) return;
+        var node = _tileNodes[row, col];
+        node?.TriggerTransformAnimation();
+        AppendLog($"地塊變化：({row},{col}) {oldTerrain} → {newTerrain}");
     }
 
     private void OnCharacterChangedInternal()

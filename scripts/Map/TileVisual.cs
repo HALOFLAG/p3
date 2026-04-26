@@ -148,6 +148,37 @@ public partial class TileVisual : Node2D
     }
 
     /// <summary>
+    /// Phase 2 任務 11 Stage 4 — 觸發 transformTile 翻牌動畫（規格書 §1.5 / §2.4）。
+    /// 沿用 _pulsePolygon 但用「閃爍」而非脈動：
+    ///   1) 短促閃白（modulate.a 0→1 60ms）
+    ///   2) flicker：瞬間黯淡（a 1→0.3 60ms）→ 再亮（0.3→1 60ms）
+    ///   3) 淡出 (a 1→0 200ms)
+    /// 視覺上比 PulseHighlight 更「事件性」，提示玩家：這格剛被改變了。
+    /// 與 TileChanged 觸發的 ApplyTexture（紋理切換）順序：
+    ///   priority TileChanged(10) 先 → 紋理已換新 → TileTransformed(70) 觸發本動畫。
+    /// </summary>
+    public void TriggerTransformAnimation()
+    {
+        if (_pulsePolygon is null) return;
+        _pulseTween?.Kill();
+        _pulsePolygon.Visible = true;
+        _pulsePolygon.Modulate = new Color(1f, 1f, 1f, 0f);
+        var tween = CreateTween();
+        // 閃白
+        tween.TweenProperty(_pulsePolygon, "modulate:a", 1f, 0.06);
+        // flicker：暗下去 → 再亮一次（一個 100ms 內的閃爍）
+        tween.TweenProperty(_pulsePolygon, "modulate:a", 0.3f, 0.06);
+        tween.TweenProperty(_pulsePolygon, "modulate:a", 1f, 0.06);
+        // 淡出
+        tween.TweenProperty(_pulsePolygon, "modulate:a", 0f, 0.2);
+        tween.TweenCallback(Callable.From(() =>
+        {
+            if (_pulsePolygon != null) _pulsePolygon.Visible = false;
+        }));
+        _pulseTween = tween;
+    }
+
+    /// <summary>
     /// 設定地塊 4 角（在 TileVisual 的 local 座標系，原點為 TileVisual.Position）。
     /// 順序：後左 → 後右 → 前右 → 前左（順時針）。
     /// </summary>
