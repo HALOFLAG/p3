@@ -162,7 +162,33 @@ public sealed class WorldMap
     /// </summary>
     public bool FirstObserveUsedThisTurn { get; private set; }
 
-    public IReadOnlyList<ActionCard> Hand => _hand;
+    /// <summary>
+    /// Phase 2 任務 11 Stage 2c：state-mode 從 state.CurrentPlayer.Hand (List&lt;string&gt;) ×
+    /// module.ActionCards 投影為 List&lt;ActionCard&gt;；standalone 從內部 _hand 取。
+    /// state-mode 為「投影 cache」模式 — 每次 read 重建（Stage 3 引入 invalidate 機制）。
+    /// </summary>
+    public IReadOnlyList<ActionCard> Hand
+    {
+        get
+        {
+            if (_state is null) return _hand;
+            return BuildHandFromState();
+        }
+    }
+
+    private IReadOnlyList<ActionCard> BuildHandFromState()
+    {
+        if (_module is null) return System.Array.Empty<ActionCard>();
+        var hand = _state!.CurrentPlayer.Hand;
+        var result = new List<ActionCard>(hand.Count);
+        foreach (var cardId in hand)
+        {
+            if (_module.ActionCards.TryGetValue(cardId, out var card))
+                result.Add(card);
+        }
+        return result;
+    }
+
     public int ActionDeckRemaining => _actionDeck.DrawCount;
     public int ActionDiscardCount => _actionDeck.DiscardCount;
     public IReadOnlyList<CompanionAiState> Companions => _companions;
@@ -412,7 +438,30 @@ public sealed class WorldMap
         return true;
     }
 
-    public TileData GetTile(int row, int col) => _tiles[row, col];
+    /// <summary>
+    /// Phase 2 任務 11 Stage 2c：state-mode 從 state.TileMap 取 PlacedTile，
+    /// 透過 <see cref="TileVisualProfileResolver"/> 翻譯為 TileData；
+    /// standalone 從內部 _tiles 取（Phase 1+2 既有路徑）。
+    /// </summary>
+    public TileData GetTile(int row, int col)
+    {
+        if (_state is null) return _tiles[row, col];
+        return ResolveStateTile(row, col);
+    }
+
+    private TileData ResolveStateTile(int row, int col)
+    {
+        // state.TileMap key 是 (X=col, Y=row)
+        if (_state!.TileMap.TryGetValue((col, row), out var placed) && _module is not null
+            && _module.Tiles.TryGetValue(placed.TileId, out var tileDef))
+        {
+            var terrain = TileVisualProfileResolver.ResolveTerrain(tileDef);
+            // IsExplored = ExplorationLevel >= Familiar（規格書 §3.5：探索等級 ≥ 熟悉視為已探索）
+            var explored = (int)placed.Level >= (int)ExplorationLevel.Familiar;
+            return new TileData(row, col, terrain, IsPlaced: true, IsExplored: explored);
+        }
+        return new TileData(row, col, MapTerrain.Forest, IsPlaced: false, IsExplored: false);
+    }
 
     public bool IsLegalPlacement(int row, int col)
     {
