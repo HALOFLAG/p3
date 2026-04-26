@@ -73,6 +73,13 @@
       "description": "S1 開場序幕 overlay 顯示用：將 loseCondition type（turnLimit / allPlayersDown）映射到中文標籤。",
       "type": "object",
       "additionalProperties": { "type": "string" }
+    },
+    "startingCompanionIds": {
+      "description": "Phase 2 任務 11 Stage 1：起手陣容同伴 ID 清單（對應 npc_companions.json 的 id）。runtime 載入時自動指派給玩家；空陣列或缺欄位則無同伴。",
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 0,
+      "maxItems": 4
     }
   },
   "$defs": {

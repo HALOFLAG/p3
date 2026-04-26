@@ -29,6 +29,9 @@ public partial class MainBootstrap : Control
     private OrbitPanel? _orbitPanel;
     private EventResolutionDialog? _eventDialog;
     private CardNarrative.Core.Models.Module? _module;
+    // Task 11 Stage 1：runtime GameState（gridSize=9, startPosition=(4,4)）；
+    // Stage 1 僅儲存參照供 Stage 2 façade 使用，本 stage WorldMap 仍是 authoritative。
+    private CardNarrative.Core.State.GameState? _gameState;
     private readonly System.Random _orbitDemoRng = new();
 
     public override void _Ready()
@@ -191,17 +194,24 @@ public partial class MainBootstrap : Control
                 _modalOverlay.Visible = false;
         };
 
-        // === 載入 abandoned-mansion 模組行動卡 ===
+        // === Task 11 Stage 1：載入模組 + 建 GameState（runtime 唯一一次模組載入）===
+        LoadModuleAndCreateGameState();
+
+        // === 載入 abandoned-mansion 模組行動卡 / 角色 / 裝備（用 _module）===
         TryLoadAbandonedMansionDeck(mainMap);
 
-        // === Task 9 demo seed：把模組前幾張事件推進 ORBIT，讓 panel 有內容可看 ===
-        // 真正的 event 來源 → ORBIT 自動 register 留待後續 PR
+        // === Task 9 demo seed：把模組前幾張事件推進 ORBIT，讓 panel 有內容可看（用 _module）===
         TrySeedOrbitDemoEvents();
 
         GD.Print("[MainBootstrap] 主場景就緒，所有 Signal 已連線。");
     }
 
-    private void TryLoadAbandonedMansionDeck(MainMapRenderer mainMap)
+    /// <summary>
+    /// Task 11 Stage 1：載入 abandoned-mansion 模組 + 建 GameState（runtime 唯一一次）。
+    /// gridSize=9 + startPosition=(4,4) 對齊 Phase 1+2 的 9×9 中心起點；
+    /// 起始同伴讀 prologue.startingCompanionIds（fallback：old-priest + hired-bodyguard）。
+    /// </summary>
+    private void LoadModuleAndCreateGameState()
     {
         try
         {
@@ -209,45 +219,86 @@ public partial class MainBootstrap : Control
             var modulePath = ProjectSettings.GlobalizePath("res://modules/builtin/abandoned-mansion/");
             var loader = new ModuleLoader(schemasFolder);
             var result = loader.Load(modulePath);
-            if (result is ModuleLoadResult.Success success)
-            {
-                // scholar 起手 8 張作為 demo deck
-                var deck = success.Module.ActionCards.Values
-                    .Where(c => c.Id.StartsWith("scholar-"))
-                    .Take(8)
-                    .ToList();
-                if (deck.Count == 0)
-                    deck = success.Module.ActionCards.Values.Take(8).ToList();
-                mainMap.LoadActionDeck(deck);
-                GD.Print($"[MainBootstrap] 載入模組成功：{deck.Count} 張行動卡進入牌堆。");
-
-                // 裝備：丟前 3 件進背包當 demo（規格書 §3.4.3 獲得即入背包）
-                var equipmentCatalog = success.Module.Equipment;
-                var initialBackpack = equipmentCatalog.Values.Take(3).Select(e => e.Id).ToList();
-                mainMap.LoadEquipmentInventory(equipmentCatalog, initialBackpack);
-                GD.Print($"[MainBootstrap] 載入裝備目錄：{equipmentCatalog.Count} 件，初始背包 {initialBackpack.Count} 件。");
-
-                // 角色卡 + 夥伴卡：demo 角色 = scholar，夥伴 = old-priest（若不存在 fallback 第一個）
-                Character? demoCharacter = success.Module.Characters.GetValueOrDefault("scholar")
-                    ?? success.Module.Characters.Values.FirstOrDefault();
-                NpcCompanion? demoCompanion = success.Module.NpcCompanions.GetValueOrDefault("old-priest")
-                    ?? success.Module.NpcCompanions.Values.FirstOrDefault();
-                if (demoCharacter is not null)
-                {
-                    mainMap.LoadCharacterAndCompanion(demoCharacter, demoCompanion, success.Module);
-                    GD.Print($"[MainBootstrap] 載入角色卡：{demoCharacter.Name}（HP {demoCharacter.HpMax}）"
-                             + (demoCompanion is null ? "（無夥伴）" : $"，夥伴：{demoCompanion.Name}"));
-                }
-            }
-            else if (result is ModuleLoadResult.Failure fail)
+            if (result is ModuleLoadResult.Failure fail)
             {
                 GD.PrintErr($"[MainBootstrap] 模組載入失敗：{fail.Errors.Count} 個錯誤");
                 foreach (var err in fail.Errors) GD.PrintErr($"  - {err}");
+                return;
             }
+            if (result is not ModuleLoadResult.Success success) return;
+            _module = success.Module;
+
+            // 起始角色：demo scholar（若不存在 fallback 第一個）
+            string heroId = _module.Characters.ContainsKey("scholar")
+                ? "scholar"
+                : _module.Characters.Keys.FirstOrDefault() ?? string.Empty;
+
+            // 起始同伴：讀 prologue.startingCompanionIds，缺時 fallback
+            var companionIds = _module.Prologue.StartingCompanionIds.Count > 0
+                ? _module.Prologue.StartingCompanionIds.ToList()
+                : new List<string> { "old-priest", "hired-bodyguard" };
+            // 過濾 module 不存在的 ID
+            companionIds = companionIds.Where(_module.NpcCompanions.ContainsKey).ToList();
+
+            _gameState = CardNarrative.Core.State.GameState.CreateNew(
+                _module,
+                chosenCharacterIds: new[] { heroId },
+                chosenCompanionIds: companionIds,
+                seed: 1234, // demo deterministic seed
+                gridSize: 9,
+                startPosition: new CardNarrative.Core.State.Position(4, 4));
+
+            GD.Print($"[MainBootstrap] GameState 建立：起始 ({_gameState.CurrentPlayer.Position.X},{_gameState.CurrentPlayer.Position.Y})、"
+                     + $"主角 {heroId}、同伴 [{string.Join(", ", companionIds)}]");
         }
         catch (System.Exception ex)
         {
             GD.PrintErr($"[MainBootstrap] 模組載入例外：{ex.Message}");
+        }
+    }
+
+    private void TryLoadAbandonedMansionDeck(MainMapRenderer mainMap)
+    {
+        if (_module is null) return;
+        try
+        {
+            // scholar 起手 8 張作為 demo deck
+            var deck = _module.ActionCards.Values
+                .Where(c => c.Id.StartsWith("scholar-"))
+                .Take(8)
+                .ToList();
+            if (deck.Count == 0)
+                deck = _module.ActionCards.Values.Take(8).ToList();
+            mainMap.LoadActionDeck(deck);
+            GD.Print($"[MainBootstrap] 載入模組成功：{deck.Count} 張行動卡進入牌堆。");
+
+            // 裝備：丟前 3 件進背包當 demo（規格書 §3.4.3 獲得即入背包）
+            var equipmentCatalog = _module.Equipment;
+            var initialBackpack = equipmentCatalog.Values.Take(3).Select(e => e.Id).ToList();
+            mainMap.LoadEquipmentInventory(equipmentCatalog, initialBackpack);
+            GD.Print($"[MainBootstrap] 載入裝備目錄：{equipmentCatalog.Count} 件，初始背包 {initialBackpack.Count} 件。");
+
+            // 角色卡 + 多同伴：用 GameState 已選好的角色 / 同伴 ID
+            if (_gameState is null) return;
+            var heroId = _gameState.CurrentPlayer.CharacterId;
+            Character? hero = _module.Characters.GetValueOrDefault(heroId);
+            var companions = _gameState.Companions
+                .Select(cs => _module.NpcCompanions.GetValueOrDefault(cs.CompanionId))
+                .Where(c => c is not null)
+                .Select(c => c!)
+                .ToList();
+            if (hero is not null)
+            {
+                mainMap.LoadCharacterAndCompanions(hero, companions, _module);
+                var companionNames = companions.Count > 0
+                    ? string.Join(" / ", companions.Select(c => c.Name))
+                    : "（無夥伴）";
+                GD.Print($"[MainBootstrap] 載入角色卡：{hero.Name}（HP {hero.HpMax}），夥伴：{companionNames}");
+            }
+        }
+        catch (System.Exception ex)
+        {
+            GD.PrintErr($"[MainBootstrap] 角色 / 裝備載入例外：{ex.Message}");
         }
     }
 
@@ -258,15 +309,9 @@ public partial class MainBootstrap : Control
     /// </summary>
     private void TrySeedOrbitDemoEvents()
     {
-        if (_orbit is null) return;
+        if (_orbit is null || _module is null) return;
         try
         {
-            var schemasFolder = ProjectSettings.GlobalizePath("res://core/schemas/");
-            var modulePath = ProjectSettings.GlobalizePath("res://modules/builtin/abandoned-mansion/");
-            var loader = new ModuleLoader(schemasFolder);
-            if (loader.Load(modulePath) is not ModuleLoadResult.Success success) return;
-            _module = success.Module;
-
             int idx = 0;
             foreach (var ev in _module.Events.Values)
             {

@@ -27,6 +27,7 @@
   },
   "startingTileId": "village-square",
   "importantTileIds": ["mansion-study", "basement-entry", "ritual-hall"],
+  "startingCompanionIds": ["old-priest", "hired-bodyguard"],
   "characterUpgradeThreshold": 3,
   "scoreFormula": "contributions * 2 + equipmentSlotsFilled"
 }

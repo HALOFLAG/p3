@@ -67,9 +67,27 @@ public partial class MainMapRenderer : Control
         NpcCompanion? companion,
         CardNarrative.Core.Models.Module module)
     {
+        // 既有單一同伴 API — 內部包成 list 走 LoadCharacterAndCompanions
+        var companions = companion is null
+            ? System.Array.Empty<NpcCompanion>()
+            : new[] { companion };
+        LoadCharacterAndCompanions(character, companions, module);
+    }
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 1：多同伴載入。LeftPanel 顯示首位同伴；
+    /// 其餘進 <see cref="WorldMap.LoadCompanions"/> AI list 供 AP 代消耗用。
+    /// </summary>
+    public void LoadCharacterAndCompanions(
+        Character character,
+        System.Collections.Generic.IReadOnlyList<NpcCompanion> companions,
+        CardNarrative.Core.Models.Module module)
+    {
         Module = module;
         _worldMap.LoadCharacter(character);
-        _worldMap.LoadCompanion(companion);
+        _worldMap.LoadCompanions(companions);
+        // LeftPanel 仍顯示單一同伴卡（首位）— Stage 2/3 完整 façade 後再考慮多同伴 UI
+        _worldMap.LoadCompanion(companions.Count > 0 ? companions[0] : null);
     }
 
     /// <summary>主角總屬性 = 角色 base + 裝備加總（跳過角色卡所在槽）。</summary>

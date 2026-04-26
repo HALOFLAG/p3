@@ -149,6 +149,20 @@ public sealed class WorldMap
         DrawToHandLimit();
     }
 
+    /// <summary>
+    /// Phase 2 任務 11 Stage 1：從模組真實同伴清單注入 AI state（取代建構子內的 placeholder a/b）。
+    /// 規格書 §3.7 同伴 AP 代消耗 — 最多 <see cref="CompanionApMax"/> 個同伴。
+    /// </summary>
+    public void LoadCompanions(IEnumerable<NpcCompanion> companions)
+    {
+        _companions.Clear();
+        foreach (var c in companions)
+        {
+            _companions.Add(new CompanionAiState(c.Id, c.Name, CompanionApMax));
+            if (_companions.Count >= 2) break; // demo Phase 2 暫定最多 2 同伴
+        }
+    }
+
     /// <summary>注入裝備目錄 + 起始背包內容（規格書 §3.4.3 獲得即入背包）。</summary>
     public void LoadEquipmentInventory(
         IReadOnlyDictionary<string, Equipment> catalog,

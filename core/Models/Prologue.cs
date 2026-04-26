@@ -30,4 +30,10 @@ public sealed record Prologue(
     // 例：{ "mansion_truth_revealed": "揭開洋房真相" } / { "turnLimit": "30 大回合內完成" }
     public IReadOnlyDictionary<string, string>? WinConditionLabels { get; init; }
     public IReadOnlyDictionary<string, string>? LoseConditionLabels { get; init; }
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 1：起手陣容同伴 ID 清單。對應 npc_companions.json 的 id。
+    /// 空清單 / 缺欄位時 runtime fallback 到「無同伴」（CompanionApSubstitution 不發生）。
+    /// </summary>
+    public IReadOnlyList<string> StartingCompanionIds { get; init; } = System.Array.Empty<string>();
 }
