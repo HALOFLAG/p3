@@ -24,6 +24,7 @@ public static class TileDeckService
     /// <summary>
     /// Structural adjacency only: all empty cells orthogonally adjacent to any placed tile.
     /// Does NOT apply tag-based placement rules. Used for map bounds / legacy.
+    /// Phase 2 任務 11 Stage 0：若 <see cref="GameState.GridSize"/> 已設則過濾出界格。
     /// </summary>
     public static IReadOnlyList<Position> GetValidPlacementCells(GameState state)
     {
@@ -35,6 +36,7 @@ public static class TileDeckService
             {
                 var cell = (key.X + dx, key.Y + dy);
                 if (state.TileMap.ContainsKey(cell)) continue;
+                if (!state.IsInBounds(cell.Item1, cell.Item2)) continue;
                 if (seen.Add(cell)) result.Add(new Position(cell.Item1, cell.Item2));
             }
         }
@@ -209,6 +211,9 @@ public static class TileDeckService
     {
         if (state.TileDeck.Count == 0 || state.TileDeck[0] != tileId)
             throw new InvalidOperationException($"tile '{tileId}' is not at the top of the deck");
+        if (!state.IsInBounds(pos))
+            throw new InvalidOperationException(
+                $"cell ({pos.X},{pos.Y}) is outside grid bounds (size={state.GridSize})");
         if (state.TileMap.ContainsKey((pos.X, pos.Y)))
             throw new InvalidOperationException($"cell ({pos.X},{pos.Y}) already occupied");
         var structural = GetValidPlacementCells(state);

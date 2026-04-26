@@ -122,6 +122,15 @@ public sealed class GameState
 {
     public required int RngSeed { get; init; }
     public required int MaxBigRounds { get; init; }
+
+    /// <summary>
+    /// Phase 2 任務 11 Stage 0：地圖網格邊界（規格書 §1.5）。
+    /// null = 無界（M-series 既有測試行為，2026-04 前的預設）；
+    /// 設定後 (0..GridSize-1) × (0..GridSize-1) 為有效範圍，超出視為非法位置。
+    /// runtime 透過 <see cref="CreateNew"/> 帶入 9 啟用；既有 xUnit 不帶則保持無界相容。
+    /// </summary>
+    public int? GridSize { get; init; }
+
     public int CurrentBigRound { get; set; } = 1;
     public int CurrentPlayerIndex { get; set; }
     public TurnPhase Phase { get; set; } = TurnPhase.Draw;
@@ -162,13 +171,27 @@ public sealed class GameState
 
     public PlayerState CurrentPlayer => Players[CurrentPlayerIndex];
 
+    /// <summary>
+    /// Phase 2 任務 11 Stage 0：判斷座標是否在地圖網格內。
+    /// <see cref="GridSize"/> 未設（null）視為無界，永遠回 true（M-series 相容路徑）。
+    /// </summary>
+    public bool IsInBounds(int x, int y)
+    {
+        if (!GridSize.HasValue) return true;
+        return x >= 0 && x < GridSize.Value && y >= 0 && y < GridSize.Value;
+    }
+
+    public bool IsInBounds(Position pos) => IsInBounds(pos.X, pos.Y);
+
     public static GameState CreateNew(
         Module module,
         IReadOnlyList<string> chosenCharacterIds,
         IReadOnlyList<string> chosenCompanionIds,
         int seed,
         IReadOnlyDictionary<string, string>? companionToPlayerBindings = null,
-        IReadOnlyDictionary<string, EquipmentSlot>? characterCardSlots = null)
+        IReadOnlyDictionary<string, EquipmentSlot>? characterCardSlots = null,
+        int? gridSize = null,
+        Position? startPosition = null)
     {
         int turnLimit = module.Prologue.LoseConditions
             .OfType<TurnLimitLoseCondition>()
@@ -179,8 +202,17 @@ public sealed class GameState
         var state = new GameState
         {
             RngSeed = seed,
-            MaxBigRounds = turnLimit
+            MaxBigRounds = turnLimit,
+            GridSize = gridSize
         };
+
+        // Stage 0：起始座標。null = 預設 (0,0) 維持 M-series 既有測試行為；
+        // runtime（任務 11 起）一律帶 (4,4) 對齊 Phase 1+2 的 9×9 中心。
+        var startPos = startPosition ?? new Position(0, 0);
+        if (gridSize.HasValue && !state.IsInBounds(startPos))
+            throw new ArgumentException(
+                $"startPosition ({startPos.X},{startPos.Y}) is outside gridSize {gridSize.Value} bounds",
+                nameof(startPosition));
 
         int playerIndex = 0;
         foreach (var id in chosenCharacterIds)
@@ -227,12 +259,12 @@ public sealed class GameState
         }
 
         var startId = module.Prologue.StartingTileId;
-        state.TileMap[(0, 0)] = new PlacedTile { TileId = startId, Level = ExplorationLevel.Unfamiliar };
-        foreach (var p in state.Players) p.Position = new Position(0, 0);
+        state.TileMap[(startPos.X, startPos.Y)] = new PlacedTile { TileId = startId, Level = ExplorationLevel.Unfamiliar };
+        foreach (var p in state.Players) p.Position = startPos;
 
         // Tile deck. Fixed order from module definition; tiles with Copies > 1
         // are seeded consecutively so subsequent copies draw back-to-back.
-        // The starting tile already occupies (0,0), so only its remaining copies
+        // The starting tile already occupies startPos, so only its remaining copies
         // (if any) go into the deck.
         foreach (var (id, tile) in module.Tiles)
         {
