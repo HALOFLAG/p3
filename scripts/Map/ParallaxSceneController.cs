@@ -46,9 +46,9 @@ public partial class ParallaxSceneController : Node2D
     /// <summary>角色橫向間距相對地板前緣寬度的比例（兩角色中心離地板中心的距離）。</summary>
     public const float CharacterSpacingRatio = 0.14f;
 
-    private const string CharacterAPath = "res://docs/人物A.png";
-    private const string CharacterBPath = "res://docs/人物B.png";
-    private const string ForegroundPath = "res://docs/前景.png";
+    private const string CharacterAPath = "res://art/portraits/人物A.png";
+    private const string CharacterBPath = "res://art/portraits/人物B.png";
+    private const string ForegroundPath = "res://art/scenes/前景.png";
 
     private Polygon2D? _backWall;
     private Polygon2D? _floor;
