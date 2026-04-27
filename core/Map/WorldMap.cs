@@ -50,14 +50,24 @@ public sealed class WorldMap
     public CardNarrative.Core.Models.Module? BackingModule => _module;
 
     // === Equipment 狀態（規格書 §3.4.3）===
-    private readonly Dictionary<EquipmentSlot, string?> _equipped = new();
-    private readonly List<string> _backpack = new();
+    // PR-A：standalone 路徑保留內部欄位；state-mode 走 GameState.CurrentPlayer.Equipment / Backpack。
+    // _equippedStandalone / _backpackStandalone 僅 standalone 模式（xUnit）使用。
+    private readonly Dictionary<EquipmentSlot, string?> _equippedStandalone = new();
+    private readonly List<string> _backpackStandalone = new();
     private readonly Dictionary<string, Equipment> _equipmentCatalog = new();
+
+    /// <summary>當前裝備配置 dual-mode dispatch（state-mode → state.CurrentPlayer.Equipment）。</summary>
+    private IDictionary<EquipmentSlot, string?> EquippedDict =>
+        _state is null ? _equippedStandalone : _state.CurrentPlayer.Equipment;
+
+    /// <summary>當前背包 dual-mode dispatch（state-mode → state.CurrentPlayer.Backpack）。</summary>
+    private IList<string> BackpackList =>
+        _state is null ? _backpackStandalone : _state.CurrentPlayer.Backpack;
 
     // === Character / Companion 卡片（驅動 LeftPanel 主角區 + 夥伴區） ===
     private Character? _character;
     private NpcCompanion? _companion;
-    private int _companionHp;
+    private int _companionHpStandalone;
 
     private (int Row, int Col) _playerPos = (InitialPlayerRow, InitialPlayerCol);
     public (int Row, int Col) PlayerPos
@@ -81,7 +91,7 @@ public sealed class WorldMap
 
     private MapTerrain? _heldTile;
     /// <summary>
-    /// state-mode 從 _heldTileId 派生 MapTerrain（透過 TileVisualProfileResolver）；
+    /// state-mode 從 HeldTileId 派生 MapTerrain（透過 TileVisualProfileResolver）；
     /// standalone 使用 _heldTile 內部欄位。
     /// </summary>
     public MapTerrain? HeldTile
@@ -89,25 +99,33 @@ public sealed class WorldMap
         get
         {
             if (_state is null) return _heldTile;
-            if (_heldTileId is null || _module is null) return null;
-            if (!_module.Tiles.TryGetValue(_heldTileId, out var tile)) return null;
+            var heldId = _state.CurrentPlayer.HeldTileId;
+            if (heldId is null || _module is null) return null;
+            if (!_module.Tiles.TryGetValue(heldId, out var tile)) return null;
             return TileVisualProfileResolver.ResolveTerrain(tile);
         }
         private set
         {
             if (_state is null) _heldTile = value;
-            // state-mode：HeldTile 由 _heldTileId 決定，外部設值無意義
-            // 內部呼叫 BeginMapExpand / TryPlaceHeldTile / CancelMapExpand 時直接操作 _heldTileId
+            // state-mode：HeldTile 由 state.CurrentPlayer.HeldTileId 決定，外部設值無意義
+            // 內部呼叫 BeginMapExpand / TryPlaceHeldTile / CancelMapExpand 時直接操作 state.CurrentPlayer.HeldTileId
         }
     }
-    /// <summary>state-mode 持有的 tile id（從 state.TileDeck 抽出）。standalone 不使用。</summary>
-    private string? _heldTileId;
 
     /// <summary>
-    /// state-mode 當前持有的 tile id（如 "village-store"）；standalone 永遠 null。
+    /// PR-B · state-mode 當前持有的 tile id（如 "village-store"），dual-mode dispatch 至 state.CurrentPlayer.HeldTileId；
+    /// standalone 永遠 null（standalone 無 tile id 概念，僅有 MapTerrain enum）。
     /// UI 可透過此 id 從 <see cref="BackingModule"/>.Tiles[id].Name 取中文卡名。
     /// </summary>
-    public string? HeldTileId => _heldTileId;
+    public string? HeldTileId
+    {
+        get => _state is null ? null : _state.CurrentPlayer.HeldTileId;
+        private set
+        {
+            if (_state is not null) _state.CurrentPlayer.HeldTileId = value;
+            // standalone 無對應欄位（用 _heldTile MapTerrain enum 表示持有狀態）
+        }
+    }
 
     /// <summary>
     /// state-mode TileDeck 頂端 3 張 tile id；standalone 永遠空。
@@ -146,11 +164,30 @@ public sealed class WorldMap
         }
     }
 
-    /// <summary>角色卡目前佔住的裝備槽位（規格書 §3.4.3 中央格 → §3-7）。預設 Head。</summary>
-    public EquipmentSlot CharacterCardSlot { get; private set; } = EquipmentSlot.Head;
+    /// <summary>
+    /// 角色卡目前佔住的裝備槽位（規格書 §3.4.3 中央格 → §3-7）。預設 Head。
+    /// PR-A：dual-mode dispatch — state-mode 從 state.CurrentPlayer.CharacterCardSlot 派生；
+    /// standalone 走 _characterCardSlotStandalone 內部欄位。
+    /// </summary>
+    public EquipmentSlot CharacterCardSlot
+    {
+        get => _state is null ? _characterCardSlotStandalone : _state.CurrentPlayer.CharacterCardSlot;
+        private set
+        {
+            if (_state is null) _characterCardSlotStandalone = value;
+            else _state.CurrentPlayer.CharacterCardSlot = value;
+        }
+    }
+    private EquipmentSlot _characterCardSlotStandalone = EquipmentSlot.Head;
     public Character? Character => _character;
     public NpcCompanion? Companion => _companion;
-    public int CompanionHp => _companionHp;
+    /// <summary>
+    /// PR-B · dual-mode dispatch — state-mode 從 state.Companions[0].Hp 派生（首位同伴）；
+    /// standalone 走 _companionHpStandalone 內部欄位。state.Companions 為空時 (e.g. 無同伴模組) 回 0。
+    /// </summary>
+    public int CompanionHp => _state is null
+        ? _companionHpStandalone
+        : (_state.Companions.Count > 0 ? _state.Companions[0].Hp : 0);
     public int CompanionHpMax => _companion?.Hp ?? 0;
 
     private int _turn = 1;
@@ -198,11 +235,29 @@ public sealed class WorldMap
         }
     }
 
+    private bool _firstObserveUsedThisTurnStandalone;
     /// <summary>
-    /// 本回合是否已用過首次觀察。state 無等價欄位 → 兩模式皆用 WorldMap 內部欄位。
-    /// 完整 EffectsService（Task 13）後若有對應 state 欄位再 dispatch。
+    /// 本回合是否已用過首次觀察（規格書 §3.1.4 觀察首次免費，之後 2 AP）。
+    /// PR-B · dual-mode dispatch — state-mode 用 state.CurrentPlayer.ObservesThisTurn > 0 派生
+    /// （與 MovesThisTurn 相同模式）；standalone 走 _firstObserveUsedThisTurnStandalone 內部欄位。
     /// </summary>
-    public bool FirstObserveUsedThisTurn { get; private set; }
+    public bool FirstObserveUsedThisTurn
+    {
+        get => _state is null
+            ? _firstObserveUsedThisTurnStandalone
+            : _state.CurrentPlayer.ObservesThisTurn > 0;
+        private set
+        {
+            if (_state is null) _firstObserveUsedThisTurnStandalone = value;
+            else
+            {
+                if (value && _state.CurrentPlayer.ObservesThisTurn == 0)
+                    _state.CurrentPlayer.ObservesThisTurn = 1;
+                else if (!value)
+                    _state.CurrentPlayer.ObservesThisTurn = 0;
+            }
+        }
+    }
 
     /// <summary>
     /// Phase 2 任務 11 Stage 2c：state-mode 從 state.CurrentPlayer.Hand (List&lt;string&gt;) ×
@@ -242,11 +297,15 @@ public sealed class WorldMap
         : _state.CurrentPlayer.Discard.Count;
     public IReadOnlyList<CompanionAiState> Companions => _companions;
 
-    /// <summary>當前裝備配置（slot → equipmentId）。Read-only 對外。</summary>
-    public IReadOnlyDictionary<EquipmentSlot, string?> Equipped => _equipped;
-    /// <summary>背包內容（read-only）。</summary>
-    public IReadOnlyList<string> Backpack => _backpack;
-    /// <summary>裝備目錄（id → Equipment）。</summary>
+    /// <summary>當前裝備配置（slot → equipmentId）。Read-only 對外。PR-A 起 dual-mode dispatch。</summary>
+    public IReadOnlyDictionary<EquipmentSlot, string?> Equipped =>
+        _state is null
+            ? _equippedStandalone
+            : (IReadOnlyDictionary<EquipmentSlot, string?>)_state.CurrentPlayer.Equipment;
+    /// <summary>背包內容（read-only）。PR-A 起 dual-mode dispatch。</summary>
+    public IReadOnlyList<string> Backpack =>
+        _state is null ? _backpackStandalone : _state.CurrentPlayer.Backpack;
+    /// <summary>裝備目錄（id → Equipment）。catalog 屬 module 級資料，非玩家狀態，仍維持 WorldMap 持有。</summary>
     public IReadOnlyDictionary<string, Equipment> EquipmentCatalog => _equipmentCatalog;
 
     public IReadOnlyList<MapTerrain> NextTilePreview
@@ -366,6 +425,13 @@ public sealed class WorldMap
     public void NotifyApChanged(int ap, int apMax)
         => RaiseOrQueue(EventPriority.ApChanged, () => ApChanged?.Invoke(ap, apMax));
 
+    /// <summary>
+    /// PR-A · 外部 mutation 後通知裝備配置 / 背包變更（如 EffectHandler 套 GrantEquipmentEffect 後）。
+    /// 走 event batch + priority 排序；UI 訂閱 EquipmentChanged 事件即可重繪 LeftPanel 裝備格 / 背包。
+    /// </summary>
+    public void NotifyEquipmentChanged()
+        => RaiseOrQueue(EventPriority.EquipmentChanged, () => EquipmentChanged?.Invoke());
+
     public WorldMap() : this(new SystemRandomProvider()) { }
 
     /// <summary>
@@ -393,14 +459,15 @@ public sealed class WorldMap
         _companions.Add(new CompanionAiState("companion-a", "夥伴 A", CompanionApMax));
         _companions.Add(new CompanionAiState("companion-b", "夥伴 B", CompanionApMax));
 
-        // 裝備 8 個主槽預設為 null（空）
+        // 裝備 8 個主槽預設為 null（空）— 僅初始化 standalone 路徑；
+        // state-mode 由 GameState.CurrentPlayer.Equipment 自然按需建 key（first grant / move）。
         foreach (EquipmentSlot s in new[] {
             EquipmentSlot.Head, EquipmentSlot.Weapon, EquipmentSlot.OffHand,
             EquipmentSlot.Body, EquipmentSlot.AccessoryA, EquipmentSlot.AccessoryB,
             EquipmentSlot.Feet, EquipmentSlot.Utility,
         })
         {
-            _equipped[s] = null;
+            _equippedStandalone[s] = null;
         }
 
         for (int r = 0; r < Size; r++)
@@ -457,12 +524,13 @@ public sealed class WorldMap
     {
         _equipmentCatalog.Clear();
         foreach (var (id, eq) in catalog) _equipmentCatalog[id] = eq;
-        _backpack.Clear();
+        var backpack = BackpackList;
+        backpack.Clear();
         foreach (var id in initialBackpack)
         {
-            if (_backpack.Count >= EquipmentManager.BackpackMax) break;
+            if (backpack.Count >= EquipmentManager.BackpackMax) break;
             if (!_equipmentCatalog.ContainsKey(id)) continue;
-            _backpack.Add(id);
+            backpack.Add(id);
         }
         EquipmentChanged?.Invoke();
     }
@@ -477,11 +545,33 @@ public sealed class WorldMap
         HpChanged?.Invoke(Hp);
     }
 
-    /// <summary>載入夥伴卡（單一夥伴；多夥伴未來擴充）。</summary>
+    /// <summary>
+    /// 載入夥伴卡（單一夥伴；多夥伴未來擴充）。
+    /// PR-B · state-mode 下若 state.Companions 已含此 companion id 則不覆蓋其 Hp（保留 GameState SoT）；
+    /// 否則同步初始 HP。standalone 走 _companionHpStandalone。
+    /// </summary>
     public void LoadCompanion(NpcCompanion? companion)
     {
         _companion = companion;
-        _companionHp = companion?.Hp ?? 0;
+        if (_state is null)
+        {
+            _companionHpStandalone = companion?.Hp ?? 0;
+        }
+        else if (companion is not null)
+        {
+            // state-mode：若 state.Companions[0] 已是同 id，沿用其 Hp（GameState 為 SoT）；
+            // 若不同 id 或 Companions 空，補建一筆並用 module 預設 Hp。
+            var existing = _state.Companions.FirstOrDefault();
+            if (existing is null || existing.CompanionId != companion.Id)
+            {
+                _state.Companions.Clear();
+                _state.Companions.Add(new CompanionState
+                {
+                    CompanionId = companion.Id,
+                    Hp = companion.Hp,
+                });
+            }
+        }
         CompanionChanged?.Invoke();
     }
 
@@ -489,7 +579,7 @@ public sealed class WorldMap
     public MoveEquipmentResult MoveCharacterCardToSlot(EquipmentSlot target)
     {
         var (result, newSlot) = EquipmentManager.MoveCharacterCardSlotToSlot(
-            _equipped, _equipmentCatalog, CharacterCardSlot, target);
+            EquippedDict, _equipmentCatalog, CharacterCardSlot, target);
         if (result == MoveEquipmentResult.Ok)
         {
             CharacterCardSlot = newSlot;
@@ -503,7 +593,7 @@ public sealed class WorldMap
     public MoveEquipmentResult SwapCharacterWithEquipmentSlot(EquipmentSlot equipmentSourceSlot)
     {
         var (result, newSlot) = EquipmentManager.SwapCharacterWithEquipmentSlot(
-            _equipped, CharacterCardSlot, equipmentSourceSlot);
+            EquippedDict, CharacterCardSlot, equipmentSourceSlot);
         if (result == MoveEquipmentResult.Ok)
         {
             CharacterCardSlot = newSlot;
@@ -519,7 +609,7 @@ public sealed class WorldMap
         if (to == CharacterCardSlot) return SwapCharacterWithEquipmentSlot(from);
         // 阻擋：來源槽是角色卡所在槽 → 不能用裝備搬法（角色卡走 MoveCharacterCardToSlot）。
         if (from == CharacterCardSlot) return MoveEquipmentResult.SourceEmpty;
-        var result = EquipmentManager.MoveSlotToSlot(_equipped, _equipmentCatalog, from, to);
+        var result = EquipmentManager.MoveSlotToSlot(EquippedDict, _equipmentCatalog, from, to);
         if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
         return result;
     }
@@ -528,7 +618,7 @@ public sealed class WorldMap
     {
         // 角色卡所在槽不能透過裝備路徑搬到背包（角色卡禁背包）。
         if (from == CharacterCardSlot) return MoveEquipmentResult.IncompatibleSlot;
-        var result = EquipmentManager.MoveSlotToBackpack(_equipped, _backpack, from);
+        var result = EquipmentManager.MoveSlotToBackpack(EquippedDict, BackpackList, from);
         if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
         return result;
     }
@@ -538,7 +628,7 @@ public sealed class WorldMap
         // 目標槽是角色卡所在槽 → 角色卡需移到背包，但角色卡禁背包 → 拒絕。
         if (to == CharacterCardSlot) return MoveEquipmentResult.IncompatibleSlot;
         var result = EquipmentManager.MoveBackpackToSlot(
-            _equipped, _backpack, _equipmentCatalog, backpackIndex, to);
+            EquippedDict, BackpackList, _equipmentCatalog, backpackIndex, to);
         if (result == MoveEquipmentResult.Ok) EquipmentChanged?.Invoke();
         return result;
     }
@@ -692,7 +782,7 @@ public sealed class WorldMap
         else
         {
             if (_state.TileDeck.Count == 0) return false;
-            _heldTileId = _state.TileDeck[0];
+            _state.CurrentPlayer.HeldTileId = _state.TileDeck[0];
             _state.TileDeck.RemoveAt(0);
         }
         Mode = InteractionMode.MapExpand;
@@ -715,12 +805,13 @@ public sealed class WorldMap
         else
         {
             // state.TileMap key = (X=col, Y=row)；新 PlacedTile 預設 Level=Unknown 觸發後續 onEnter 探索
-            _state!.TileMap[(col, row)] = new PlacedTile
+            var heldId = _state.CurrentPlayer.HeldTileId!;
+            _state.TileMap[(col, row)] = new PlacedTile
             {
-                TileId = _heldTileId!,
+                TileId = heldId,
                 Level = ExplorationLevel.Unknown,
             };
-            _heldTileId = null;
+            _state.CurrentPlayer.HeldTileId = null;
         }
         Mode = InteractionMode.Idle;
         TilePlaced?.Invoke(terrain, row, col);
@@ -745,8 +836,9 @@ public sealed class WorldMap
         else
         {
             // 把 heldTileId 放回 state.TileDeck 最前端
-            _state!.TileDeck.Insert(0, _heldTileId!);
-            _heldTileId = null;
+            var heldId = _state.CurrentPlayer.HeldTileId!;
+            _state.TileDeck.Insert(0, heldId);
+            _state.CurrentPlayer.HeldTileId = null;
         }
         Mode = InteractionMode.Idle;
         ModeChanged?.Invoke();

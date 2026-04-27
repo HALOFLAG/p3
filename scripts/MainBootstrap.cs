@@ -557,8 +557,13 @@ public partial class MainBootstrap : Control
                     }
                     break;
                 }
+            case GrantEquipmentEffect:
+                // PR-A：grantEquipment 寫了 state.CurrentPlayer.Equipment / Backpack / PendingEquipmentGrants 任一條，
+                // 通知 LeftPanel 重繪裝備格與背包；priority 55 排在 TileChanged(10) 之後、TileTransformed(70) 之前。
+                worldMap.NotifyEquipmentChanged();
+                break;
             // 其他 effect（SetFlag/GrantResource/ClimaxTn/...）目前不需要 WorldMap UI 通知；
-            // GrantEquipment / TileProgress / TriggerBattle 留 Task 12+ 接 UI 時補
+            // TileProgress / TriggerBattle 留 Task 12+ 接 UI 時補
         }
     }
 

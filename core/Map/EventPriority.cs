@@ -22,6 +22,8 @@ public enum EventPriority
     HandChanged = 40,
     HandSizeChanged = 45,
     ModeChanged = 50,
+    /// <summary>PR-A · 裝備配置變更（grantEquipment effect / MoveEquipment* 後）。</summary>
+    EquipmentChanged = 55,
     CompanionChanged = 60,
     /// <summary>Stage 5 transformTile 事件後的對應 emit（高於一般 TileChanged）。</summary>
     TileTransformed = 70,

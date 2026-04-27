@@ -1,8 +1,9 @@
 // EffectHandler — 將 EffectBase 多型效果逐一套用到 GameState。
 // 支援：SetFlag、GrantResource、ClimaxTnIncrease、TriggerBattle、
-// TileProgress（呼叫 TileProgressService）、GrantEquipment（丟進玩家 PendingEquipmentGrants）、
+// TileProgress（呼叫 TileProgressService）、GrantEquipment（auto-equip / 入背包 / pending 三段 fallback）、
 // RollCheck / DrawEncounter 由 EventResolver 處理。
 using System.Text.Json;
+using CardNarrative.Core.Cards;
 using CardNarrative.Core.Models;
 using CardNarrative.Core.State;
 
@@ -141,27 +142,33 @@ public sealed class EffectHandler : IEffectHandler
 
     private static void ApplyGrantEquipment(GrantEquipmentEffect ge, GameState state, Module? module)
     {
-        if (module is null || !module.Equipment.TryGetValue(ge.Id, out var eq))
-        {
-            // unknown module or equipment; queue as pending so caller can surface in UI.
-            state.CurrentPlayer.PendingEquipmentGrants.Add(ge.Id);
-            return;
-        }
         var player = state.CurrentPlayer;
-        var target = eq.Slot;
-        if (target == player.CharacterCardSlot)
+
+        // 規格書 §3.4.3 「獲得即入背包」：以背包為主、auto-equip 為便利路徑、PendingEquipmentGrants 為最後 fallback。
+        // 三段 fallback：
+        //   1. 主槽空 + module 已知裝備 → auto-equip 至主槽（保留 GrantEquipmentEffectTests 的便利語意）
+        //   2. 主槽被占 / 角色卡槽 / module 未知 → 嘗試入背包
+        //   3. 背包也滿 → PendingEquipmentGrants（玩家手動處理）
+
+        if (module is not null && module.Equipment.TryGetValue(ge.Id, out var eq))
         {
-            // slot occupied by character card — queue for manual resolution.
-            player.PendingEquipmentGrants.Add(ge.Id);
+            var target = eq.Slot;
+            player.Equipment.TryGetValue(target, out var existing);
+            if (target != player.CharacterCardSlot && existing is null)
+            {
+                player.Equipment[target] = ge.Id;
+                return;
+            }
+        }
+
+        // 入背包（規格書 §3.4.3）
+        if (player.Backpack.Count < EquipmentManager.BackpackMax)
+        {
+            player.Backpack.Insert(0, ge.Id); // 進背包頂端，與 EquipmentManager.AddToBackpack 行為一致
             return;
         }
-        player.Equipment.TryGetValue(target, out var existing);
-        if (existing is null)
-        {
-            player.Equipment[target] = ge.Id;
-            return;
-        }
-        // slot already has a different item; queue for manual resolution (player decides swap or discard).
+
+        // 背包也滿，由玩家手動處理
         player.PendingEquipmentGrants.Add(ge.Id);
     }
 }

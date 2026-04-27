@@ -38,14 +38,35 @@ public sealed class PlayerState
     public int HpMax { get; init; }
     public int ActionPoints { get; set; }
     public int MovesThisTurn { get; set; }
+    /// <summary>
+    /// PR-B · 本回合已用觀察次數（本回合首次觀察免費；之後每次 2 AP）。
+    /// 規格書 §3.1.4 觀察規則。對齊 <see cref="MovesThisTurn"/> 命名。
+    /// 由 WorldMap.FirstObserveUsedThisTurn dual-mode dispatch 讀寫。AdvanceTurn 重置為 0。
+    /// </summary>
+    public int ObservesThisTurn { get; set; }
     public int Contributions { get; set; }
     public List<string> Hand { get; } = new();
     public List<string> Deck { get; } = new();
     public List<string> Discard { get; } = new();
     public Dictionary<string, int> ActionCardUsesThisTurn { get; } = new();
     public Position Position { get; set; } = new(0, 0);
+
+    /// <summary>
+    /// PR-B · 玩家當前持有的地塊 id（MapExpand 模式抽出但尚未放置）。
+    /// null = 待命狀態無持有地塊。runtime 透過 WorldMap.HeldTile / HeldTileId 投影。
+    /// 任務 11 前曾在 WorldMap._heldTileId 為唯一 SoT；任務 11 PR-B 統一收歸 GameState，
+    /// 為 Task 17 存檔讀檔保留持有狀態鋪路（玩家在 MapExpand 模式存檔時不丟失）。
+    /// </summary>
+    public string? HeldTileId { get; set; }
+
     public Dictionary<EquipmentSlot, string?> Equipment { get; } = new();
     public EquipmentSlot CharacterCardSlot { get; set; } = EquipmentSlot.Head;
+    /// <summary>
+    /// PR-A · 規格書 §3.4.3「獲得即入背包」：玩家背包（上限 EquipmentManager.BackpackMax = 3）。
+    /// 由 WorldMap dual-mode dispatch 讀寫；EffectHandler.ApplyGrantEquipment 在自動裝備失敗時優先寫此欄位，
+    /// 滿了才退回 PendingEquipmentGrants。Task 11 前曾在 WorldMap._backpack 為唯一 SoT；任務 11 PR-A 統一收歸 GameState。
+    /// </summary>
+    public List<string> Backpack { get; } = new();
     public List<string> PendingEquipmentGrants { get; } = new();
     public string? BoundCompanionId { get; set; }
 
