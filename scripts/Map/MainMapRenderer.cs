@@ -149,8 +149,16 @@ public partial class MainMapRenderer : Control
 
     // === 對外 Signals（取代內嵌 HUD）===
 
-    /// <summary>牌堆狀態變更：發送 (剩餘張數, 持有, NEXT[0], NEXT[1])。空字串代表 -。</summary>
-    [Signal] public delegate void DeckStatusChangedEventHandler(int remaining, string heldTerrain, string previewTop, string previewSecond, string previewThird);
+    /// <summary>
+    /// 牌堆狀態變更：發送 (剩餘, 持有 terrain, 持有名, NEXT[0] terrain, NEXT[0] 名, NEXT[1] terrain, NEXT[1] 名, NEXT[2] terrain, NEXT[2] 名)。
+    /// 空字串代表 —。terrain 用 MapTerrain enum 字串；name 為 module.Tiles[id].Name（如「村內雜貨店」），standalone / 無 module 時為空。
+    /// </summary>
+    [Signal] public delegate void DeckStatusChangedEventHandler(
+        int remaining,
+        string heldTerrain, string heldName,
+        string previewTop, string previewTopName,
+        string previewSecond, string previewSecondName,
+        string previewThird, string previewThirdName);
 
     /// <summary>互動模式變更（中文標籤）。</summary>
     [Signal] public delegate void ModeChangedExtEventHandler(string modeLabel);
@@ -1042,14 +1050,26 @@ public partial class MainMapRenderer : Control
     private void EmitHudSignals()
     {
         var preview = _worldMap.NextTilePreview;
+        var previewIds = _worldMap.NextTileIdPreview;
+        var module = _worldMap.BackingModule;
+        string ResolveName(string? id) =>
+            id is not null && module is not null && module.Tiles.TryGetValue(id, out var t) ? t.Name : "";
+
         var top = preview.Count > 0 ? preview[0].ToString() : "";
         var second = preview.Count > 1 ? preview[1].ToString() : "";
         var third = preview.Count > 2 ? preview[2].ToString() : "";
+        var topName = previewIds.Count > 0 ? ResolveName(previewIds[0]) : "";
+        var secondName = previewIds.Count > 1 ? ResolveName(previewIds[1]) : "";
+        var thirdName = previewIds.Count > 2 ? ResolveName(previewIds[2]) : "";
+        var heldName = ResolveName(_worldMap.HeldTileId);
+
         EmitSignal(
             SignalName.DeckStatusChanged,
             _worldMap.RemainingTiles,
-            _worldMap.HeldTile?.ToString() ?? "",
-            top, second, third);
+            _worldMap.HeldTile?.ToString() ?? "", heldName,
+            top, topName,
+            second, secondName,
+            third, thirdName);
 
         var modeLabel = _worldMap.Mode switch
         {

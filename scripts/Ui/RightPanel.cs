@@ -13,8 +13,11 @@ public partial class RightPanel : PanelContainer
     // Slot 1：未持有時顯示「下一張」（deck 頂端）；持有時顯示「持有」+ 高亮
     private TilePreviewCard? _slot1Card;
     private Label? _slot1TitleLabel;
+    private Label? _slot1NameLabel;
     private TilePreviewCard? _slot2Card;
+    private Label? _slot2NameLabel;
     private TilePreviewCard? _slot3Card;
+    private Label? _slot3NameLabel;
     private Label? _deckRemainingLabel;
     private RichTextLabel? _logText;
 
@@ -65,7 +68,12 @@ public partial class RightPanel : PanelContainer
         BuildTurnLog(logBox);
     }
 
-    public void OnDeckStatusChanged(int remaining, string heldTerrain, string previewTop, string previewSecond, string previewThird)
+    public void OnDeckStatusChanged(
+        int remaining,
+        string heldTerrain, string heldName,
+        string previewTop, string previewTopName,
+        string previewSecond, string previewSecondName,
+        string previewThird, string previewThirdName)
     {
         var held = ParseTerrain(heldTerrain);
         if (held is { } heldTile)
@@ -74,20 +82,47 @@ public partial class RightPanel : PanelContainer
             _slot1Card?.SetTerrain(heldTile);
             _slot1Card?.SetHighlighted(true);
             if (_slot1TitleLabel != null) _slot1TitleLabel.Text = "持有";
-            _slot2Card?.SetTerrain(ParseTerrain(previewTop));
-            _slot3Card?.SetTerrain(ParseTerrain(previewSecond));
+            SetNameLabel(_slot1NameLabel, heldName, heldTile);
+            var top = ParseTerrain(previewTop);
+            _slot2Card?.SetTerrain(top);
+            SetNameLabel(_slot2NameLabel, previewTopName, top);
+            var second = ParseTerrain(previewSecond);
+            _slot3Card?.SetTerrain(second);
+            SetNameLabel(_slot3NameLabel, previewSecondName, second);
         }
         else
         {
             // 待命：slot1 = 下一張（無高亮）；slot2 = 第 2 張；slot3 = 第 3 張
-            _slot1Card?.SetTerrain(ParseTerrain(previewTop));
+            var top = ParseTerrain(previewTop);
+            _slot1Card?.SetTerrain(top);
             _slot1Card?.SetHighlighted(false);
             if (_slot1TitleLabel != null) _slot1TitleLabel.Text = "下一張";
-            _slot2Card?.SetTerrain(ParseTerrain(previewSecond));
-            _slot3Card?.SetTerrain(ParseTerrain(previewThird));
+            SetNameLabel(_slot1NameLabel, previewTopName, top);
+            var second = ParseTerrain(previewSecond);
+            _slot2Card?.SetTerrain(second);
+            SetNameLabel(_slot2NameLabel, previewSecondName, second);
+            var third = ParseTerrain(previewThird);
+            _slot3Card?.SetTerrain(third);
+            SetNameLabel(_slot3NameLabel, previewThirdName, third);
         }
         if (_deckRemainingLabel != null)
             _deckRemainingLabel.Text = $"剩餘 {remaining} 張";
+    }
+
+    /// <summary>
+    /// 灌卡名 label：優先用 module 提供的中文卡名（如「村內雜貨店」）；
+    /// 為空（standalone / 無 module）時 fallback 到地形類別字（「建築」/「森林」）；
+    /// 兩者皆無顯示「—」。
+    /// </summary>
+    private static void SetNameLabel(Label? label, string moduleName, MapTerrain? terrain)
+    {
+        if (label is null) return;
+        if (!string.IsNullOrEmpty(moduleName))
+            label.Text = moduleName;
+        else if (terrain is { } t)
+            label.Text = TilePreviewCard.DisplayName(t);
+        else
+            label.Text = "—";
     }
 
     private static MapTerrain? ParseTerrain(string s)
@@ -117,15 +152,15 @@ public partial class RightPanel : PanelContainer
         row.AddThemeConstantOverride("separation", 8);
         v.AddChild(row);
         // Slot 1：未持有 → 「下一張」；持有時切「持有」+ 高亮（OnDeckStatusChanged 內處理）
-        row.AddChild(MakePreviewSlot("下一張", out _slot1Card, out _slot1TitleLabel));
-        row.AddChild(MakePreviewSlot("第 2 張", out _slot2Card, out _));
-        row.AddChild(MakePreviewSlot("第 3 張", out _slot3Card, out _));
+        row.AddChild(MakePreviewSlot("下一張", out _slot1Card, out _slot1TitleLabel, out _slot1NameLabel));
+        row.AddChild(MakePreviewSlot("第 2 張", out _slot2Card, out _, out _slot2NameLabel));
+        row.AddChild(MakePreviewSlot("第 3 張", out _slot3Card, out _, out _slot3NameLabel));
 
         _deckRemainingLabel = MakeColoredLabel("剩餘 — 張", 10, Palette.OrnamentInk);
         v.AddChild(_deckRemainingLabel);
     }
 
-    private static VBoxContainer MakePreviewSlot(string title, out TilePreviewCard card, out Label titleLabel)
+    private static VBoxContainer MakePreviewSlot(string title, out TilePreviewCard card, out Label titleLabel, out Label nameLabel)
     {
         var v = new VBoxContainer();
         v.AddThemeConstantOverride("separation", 2);
@@ -134,6 +169,13 @@ public partial class RightPanel : PanelContainer
         v.AddChild(titleLabel);
         card = new TilePreviewCard();
         v.AddChild(card);
+        // 卡下方卡名 label（如「村內雜貨店」）— 寬度限制在 card 寬以下、超長自動裁切
+        nameLabel = MakeColoredLabel("—", 10, Palette.Ink);
+        nameLabel.HorizontalAlignment = HorizontalAlignment.Center;
+        nameLabel.CustomMinimumSize = new Vector2(TilePreviewCard.CardSize, 0);
+        nameLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        nameLabel.ClipText = true;
+        v.AddChild(nameLabel);
         return v;
     }
 

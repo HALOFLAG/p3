@@ -103,6 +103,25 @@ public sealed class WorldMap
     /// <summary>state-mode 持有的 tile id（從 state.TileDeck 抽出）。standalone 不使用。</summary>
     private string? _heldTileId;
 
+    /// <summary>
+    /// state-mode 當前持有的 tile id（如 "village-store"）；standalone 永遠 null。
+    /// UI 可透過此 id 從 <see cref="BackingModule"/>.Tiles[id].Name 取中文卡名。
+    /// </summary>
+    public string? HeldTileId => _heldTileId;
+
+    /// <summary>
+    /// state-mode TileDeck 頂端 3 張 tile id；standalone 永遠空。
+    /// 與 <see cref="NextTilePreview"/> 同序對齊（NextTilePreview[i] 對應 NextTileIdPreview[i]）。
+    /// </summary>
+    public IReadOnlyList<string> NextTileIdPreview
+    {
+        get
+        {
+            if (_state is null) return Array.Empty<string>();
+            return _state.TileDeck.Take(3).ToList();
+        }
+    }
+
     private int _hp = 12;
     public int Hp
     {
