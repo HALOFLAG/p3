@@ -83,6 +83,19 @@ public sealed class PlayerState
 }
 
 /// <summary>
+/// Stage 5 · 戰鬥中同伴可提供的 3 種輔助（規格 §1.7）。每戰每同伴每種輔助 1 次冷卻。
+/// </summary>
+public enum CompanionCombatSupportKind
+{
+    /// <summary>攻擊加乘：玩家下次攻擊命中時傷害 +2。</summary>
+    AttackBoost,
+    /// <summary>行動輔助：玩家下次擲骰（攻擊 / 迴避 / 格擋 / 反擊）+2。</summary>
+    RollSupport,
+    /// <summary>抵擋傷害（蓄勢）：玩家下次受擊時由同伴代受全額傷害。</summary>
+    BlockDamage,
+}
+
+/// <summary>
 /// B9 · 同伴命令類型：玩家主動指揮同伴消耗其 AP 執行戰術動作。
 /// 每種命令有獨立冷卻（CommandsUsedThisBigRound / CommandsUsedThisVisit）。
 /// </summary>
@@ -115,6 +128,9 @@ public sealed class CompanionState
 
     /// <summary>B9 · Guard 命令是否已下過、尚未消耗（玩家進下 tile 時觸發 onEnter 事件被阻擋 1 次）。</summary>
     public bool HasGuardPending { get; set; }
+
+    /// <summary>Stage 5 · 本戰鬥已用過的戰鬥輔助種類集合（每戰每同伴 1 次冷卻；戰鬥結束後清除）。</summary>
+    public HashSet<CompanionCombatSupportKind> UsedCombatSupportThisBattle { get; } = new();
 }
 
 public sealed class PlacedTile

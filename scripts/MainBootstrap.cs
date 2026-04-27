@@ -41,6 +41,11 @@ public partial class MainBootstrap : Control
     private MessageBubblePanel? _bubblePanel;
     private CanvasLayer? _overlayLayer;
 
+    // Task 13 Stage 1：戰鬥子場景（規格書 §1.8 + §4.5）
+    private HauntedManor.Scripts.Battle.BattleScene? _battleScene;
+    private BattleEngine? _battleEngine;
+    private CardNarrative.Core.State.BattleState? _activeBattleState;
+
     public override void _Ready()
     {
         // 套用全域 Theme
@@ -191,6 +196,14 @@ public partial class MainBootstrap : Control
         // TopBar NEXT TURN 觸發 service.OnTurnEnd 清空（既有 EndTurnPressed signal 已連 mainMap.RequestAdvanceTurn）
         if (topBar is not null)
             topBar.EndTurnPressed += () => _messageBubbles?.OnTurnEnd();
+
+        // === Task 13 Stage 1 · 戰鬥子場景（規格書 §1.8 + §4.5）===
+        // BattleEngine 用簡單 RandomDice（與 GameState 共用 seed 留 Stage 2 強化）；
+        // BattleScene 是 AcceptDialog overlay，動態建構不依賴 .tscn。
+        _battleEngine = new BattleEngine(new SeededDiceService(_orbitDemoRng.Next()));
+        _battleScene = new HauntedManor.Scripts.Battle.BattleScene { Name = "BattleScene" };
+        AddChild(_battleScene);
+        _battleScene.BattleClosed += OnBattleClosed;
 
         // === Task 9 Part A · 玩家移動 → 隨機晉升 1 張 ClassC → ClassA（模擬 tile-enter 觸發）===
         // mainMap 在更上方已 null 檢查並 return，此處保證非 null
@@ -472,6 +485,55 @@ public partial class MainBootstrap : Control
             isImportant: isImportant);
 
         _orbit.RemoveById(eventId);
+
+        // Task 13 Stage 1：偵測 triggerBattle effect 寫入的 PendingBattleId → 開戰鬥子場景
+        TryTriggerPendingBattle();
+    }
+
+    /// <summary>
+    /// Task 13 Stage 1 — 若 state.PendingBattleId 不為 null（triggerBattle effect 寫入），
+    /// 從 module.Battles 反查 BattleCard，呼 BattleEngine.Start 拿 BattleState，開啟 BattleScene overlay。
+    /// Stage 2 起在 BattleScene 內部走 ResolveEncounter / 階段切換；Stage 1 只開 dialog 顯示敵人名/HP。
+    /// </summary>
+    private void TryTriggerPendingBattle()
+    {
+        if (_gameState is null || _module is null || _battleEngine is null || _battleScene is null) return;
+        var battleId = _gameState.PendingBattleId;
+        if (string.IsNullOrEmpty(battleId)) return;
+        if (!_module.Battles.TryGetValue(battleId, out var card))
+        {
+            GD.PrintErr($"[MainBootstrap] PendingBattleId='{battleId}' 在 module.Battles 找不到對應 BattleCard");
+            _gameState.PendingBattleId = null;
+            return;
+        }
+        _activeBattleState = _battleEngine.Start(card);
+        // 反查當前玩家對應的 Character（state.CurrentPlayer.CharacterId → module.Characters[id]）
+        var character = _module.Characters.GetValueOrDefault(_gameState.CurrentPlayer.CharacterId);
+        if (character is null)
+        {
+            GD.PrintErr($"[MainBootstrap] CharacterId='{_gameState.CurrentPlayer.CharacterId}' 在 module.Characters 找不到");
+            _gameState.PendingBattleId = null;
+            return;
+        }
+        GD.Print($"[MainBootstrap] 戰鬥啟動：{card.Name}（HP {card.Stats.HpMax}，TN {card.EncounterTn}）");
+        _battleScene.OpenWithBattle(_battleEngine, card, _activeBattleState, _gameState, character, _module, _messageBubbles);
+    }
+
+    /// <summary>玩家按「結束戰鬥」鈕觸發；清 PendingBattleId 並丟棄 active BattleState。</summary>
+    private void OnBattleClosed()
+    {
+        if (_gameState is not null) _gameState.PendingBattleId = null;
+        _activeBattleState = null;
+
+        // Stage 6 · 戰鬥內 mutation（同伴 HP / 玩家 HP / Backpack）不走 WorldMap event batch；
+        // 戰鬥結束後主動觸發主場景 UI 重繪以同步顯示。
+        if (_mainMap is not null)
+        {
+            _mainMap.WorldMap.NotifyCompanionChanged();
+            _mainMap.WorldMap.NotifyHpChanged(_mainMap.WorldMap.Hp);
+            _mainMap.WorldMap.NotifyEquipmentChanged();
+        }
+        GD.Print("[MainBootstrap] 戰鬥結束，回主場景");
     }
 
     /// <summary>

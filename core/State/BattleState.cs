@@ -61,6 +61,16 @@ public sealed class BattleState
     /// <summary>Set of Character CombatAbility Ids already consumed in this battle (persist across rounds).</summary>
     public HashSet<string> UsedCharacterAbilities { get; } = new();
 
+    /// <summary>Stage 5 · 同伴「攻擊加乘」設置玩家下次攻擊的傷害加成；命中後消耗（規格 §1.7）。</summary>
+    public Dictionary<int, int> PlayerNextAttackBonus { get; } = new();
+
+    /// <summary>Stage 5 · 同伴「行動輔助」設置玩家下次擲骰加值；任意擲骰後消耗（規格 §1.7）。</summary>
+    public Dictionary<int, int> PlayerNextRollBonus { get; } = new();
+
+    /// <summary>Stage 5 · 同伴「抵擋傷害（蓄勢）」是否待命；玩家下次受擊時由 <see cref="CompanionBlockSourceIdx"/> 同伴代受全額傷害（規格 §1.7）。</summary>
+    public bool CompanionBlockPending { get; set; }
+    public int CompanionBlockSourceIdx { get; set; } = -1;
+
     /// <summary>First-turn AP penalty imposed by an Ambushed encounter (per player index).</summary>
     public Dictionary<int, int> PendingApPenalty { get; } = new();
 

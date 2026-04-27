@@ -149,8 +149,9 @@ public sealed class BattleEngine
         }
         if (roll.IsDouble1)
         {
+            // §1.11 vulnerable stacking=replace：同回合多次觸發（雙 1 + CritFail）仍只保留 +2，不疊加
             bs.PlayerNextHitBonusDamage[bs.ActivePlayerIndex] =
-                bs.PlayerNextHitBonusDamage.GetValueOrDefault(bs.ActivePlayerIndex) + 2;
+                Math.Max(bs.PlayerNextHitBonusDamage.GetValueOrDefault(bs.ActivePlayerIndex), 2);
         }
 
         string tierZh = tier switch
@@ -316,7 +317,10 @@ public sealed class BattleEngine
         int weaponHit = weapon?.HitBonus ?? 0;
         int weaponDmg = weapon?.Damage ?? 0;
         int power = character.Stats.Power;
-        int total = roll.Total + power + weaponHit + rollBonus;
+        // Stage 5 · 同伴「行動輔助」：消耗 PlayerNextRollBonus 加進 total（任意擲骰觸發後重置）
+        int companionRollBonus = bs.PlayerNextRollBonus.GetValueOrDefault(bs.ActivePlayerIndex);
+        if (companionRollBonus > 0) bs.PlayerNextRollBonus[bs.ActivePlayerIndex] = 0;
+        int total = roll.Total + power + weaponHit + rollBonus + companionRollBonus;
 
         int tn = card.Stats.Evasion;
         CheckDegree degree;
@@ -335,13 +339,21 @@ public sealed class BattleEngine
             if (degree == CheckDegree.CritSuccess) scaled += 3;
             else if (degree == CheckDegree.Partial) scaled = Math.Max(1, Math.Floor(scaled / 2.0));
             dmg = Math.Max(1, (int)Math.Floor(scaled));
+            // Stage 5 · 同伴「攻擊加乘」：命中後消耗 PlayerNextAttackBonus（規格 §1.7）
+            int attackBonus = bs.PlayerNextAttackBonus.GetValueOrDefault(bs.ActivePlayerIndex);
+            if (attackBonus > 0)
+            {
+                dmg += attackBonus;
+                bs.PlayerNextAttackBonus[bs.ActivePlayerIndex] = 0;
+            }
             bs.EnemyHp = Math.Max(0, bs.EnemyHp - dmg);
         }
 
         if (degree == CheckDegree.CritFail)
         {
+            // §1.11 vulnerable stacking=replace：與 ResolveEncounter 同樣語意
             bs.PlayerNextHitBonusDamage[bs.ActivePlayerIndex] =
-                bs.PlayerNextHitBonusDamage.GetValueOrDefault(bs.ActivePlayerIndex) + 2;
+                Math.Max(bs.PlayerNextHitBonusDamage.GetValueOrDefault(bs.ActivePlayerIndex), 2);
         }
 
         string degreeZh = degree switch
@@ -520,6 +532,27 @@ public sealed class BattleEngine
         int baseDmg = card.Stats.AttackPower + action.Payload.Damage;
         if (bs.EnemyPrepared) { baseDmg *= 2; bs.EnemyPrepared = false; }
 
+        // Stage 5 · 同伴「抵擋傷害（蓄勢）」short-circuit：玩家受擊由同伴代受全額（規格 §1.7）。
+        // 優先級：高於玩家自身反應 — 蓄勢已決定，玩家此次不擲骰、不消 AP。
+        if (bs.CompanionBlockPending && gameState is not null
+            && bs.CompanionBlockSourceIdx >= 0 && bs.CompanionBlockSourceIdx < gameState.Companions.Count)
+        {
+            var companion = gameState.Companions[bs.CompanionBlockSourceIdx];
+            if (companion.Hp > 0)
+            {
+                companion.Hp = Math.Max(0, companion.Hp - baseDmg);
+                bs.CompanionBlockPending = false;
+                int blockedIdx = bs.CompanionBlockSourceIdx;
+                bs.CompanionBlockSourceIdx = -1;
+                string blockLine = $"同伴 {companion.CompanionId} 代受 {baseDmg} 傷害（蓄勢消耗）。";
+                RecordLog(bs, blockLine, TurnLogKind.Hit);
+                return Record(action, response, null, null, baseDmg, 0, 0, targetIdx, true, blockLine);
+            }
+            // 蓄勢同伴 HP=0：失效，回正常流程
+            bs.CompanionBlockPending = false;
+            bs.CompanionBlockSourceIdx = -1;
+        }
+
         var target = players[targetIdx];
         bool dodged = false;
         int dmgTaken = 0;
@@ -543,7 +576,10 @@ public sealed class BattleEngine
                 int dodgeBonus = bs.PlayerDodgeBonusNext.GetValueOrDefault(targetIdx);
                 bs.PlayerDodgeBonusNext[targetIdx] = 0;
                 int evBonus = bs.PlayerEvasionBonusThisRound.GetValueOrDefault(targetIdx);
-                int evasionTotal = roll.Value.Total + (character?.Stats.Skill ?? 0) + dodgeBonus + evBonus;
+                // Stage 5 · 同伴「行動輔助」：消耗 PlayerNextRollBonus 加進 evasionTotal
+                int companionRollBonus = bs.PlayerNextRollBonus.GetValueOrDefault(targetIdx);
+                if (companionRollBonus > 0) bs.PlayerNextRollBonus[targetIdx] = 0;
+                int evasionTotal = roll.Value.Total + (character?.Stats.Skill ?? 0) + dodgeBonus + evBonus + companionRollBonus;
                 total = evasionTotal;
                 int atkValue = card.Stats.AttackPower;
                 if (evasionTotal >= atkValue + 2) { dodged = true; line = $"Player {targetIdx + 1} 成功迴避（{evasionTotal} vs {atkValue}）。"; }
@@ -558,7 +594,10 @@ public sealed class BattleEngine
                 SpendResponseAp(target);
                 roll = _dice.Roll2d6();
                 int shieldDef = module is null ? 0 : (EquipmentService.GetWeaponStats(target, module)?.HitBonus ?? 0);
-                int blockTotal = roll.Value.Total + (character?.Stats.Power ?? 0) + shieldDef;
+                // Stage 5 · 同伴「行動輔助」：消耗 PlayerNextRollBonus 加進 blockTotal
+                int companionRollBonus = bs.PlayerNextRollBonus.GetValueOrDefault(targetIdx);
+                if (companionRollBonus > 0) bs.PlayerNextRollBonus[targetIdx] = 0;
+                int blockTotal = roll.Value.Total + (character?.Stats.Power ?? 0) + shieldDef + companionRollBonus;
                 total = blockTotal;
                 int atkValue = card.Stats.AttackPower;
                 if (blockTotal >= atkValue + 2) { dodged = true; line = $"Player {targetIdx + 1} 完全格擋（{blockTotal} vs {atkValue}）。"; }
@@ -572,7 +611,10 @@ public sealed class BattleEngine
                 var character = ModuleCharacter(module, target);
                 SpendResponseAp(target);
                 roll = _dice.Roll2d6();
-                int counterTotal = roll.Value.Total + (character?.Stats.Power ?? 0);
+                // Stage 5 · 同伴「行動輔助」：消耗 PlayerNextRollBonus 加進 counterTotal
+                int companionRollBonus = bs.PlayerNextRollBonus.GetValueOrDefault(targetIdx);
+                if (companionRollBonus > 0) bs.PlayerNextRollBonus[targetIdx] = 0;
+                int counterTotal = roll.Value.Total + (character?.Stats.Power ?? 0) + companionRollBonus;
                 total = counterTotal;
                 int atkValue = card.Stats.AttackPower;
                 if (counterTotal >= atkValue)

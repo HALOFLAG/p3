@@ -432,6 +432,12 @@ public sealed class WorldMap
     public void NotifyEquipmentChanged()
         => RaiseOrQueue(EventPriority.EquipmentChanged, () => EquipmentChanged?.Invoke());
 
+    /// <summary>
+    /// Stage 6 · 外部 mutation 後通知同伴變更（如戰鬥內 BattleEngine 直接 mutate state.Companions[i].Hp 後）。
+    /// </summary>
+    public void NotifyCompanionChanged()
+        => RaiseOrQueue(EventPriority.CompanionChanged, () => CompanionChanged?.Invoke());
+
     public WorldMap() : this(new SystemRandomProvider()) { }
 
     /// <summary>
