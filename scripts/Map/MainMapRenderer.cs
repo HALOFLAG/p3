@@ -667,11 +667,24 @@ public partial class MainMapRenderer : Control
 
     // === WorldMap event handlers ===
 
+    /// <summary>
+    /// 反查 (row, col) 上的 tile 中文卡名（如「村內雜貨店」），standalone 或未放置回 null。
+    /// 來源：WorldMap.GetTileId → BackingModule.Tiles[id].Name。
+    /// </summary>
+    private string? ResolveTileName(int row, int col)
+    {
+        var id = _worldMap.GetTileId(row, col);
+        if (id is null) return null;
+        if (_worldMap.BackingModule is null) return null;
+        return _worldMap.BackingModule.Tiles.TryGetValue(id, out var tile) ? tile.Name : null;
+    }
+
     private void OnTileChanged(int row, int col)
     {
         var node = _tileNodes[row, col];
         var data = _worldMap.GetTile(row, col);
         node.SetTile(data.Terrain, data.IsPlaced, data.IsExplored);
+        node.SetTileName(ResolveTileName(row, col));
 
         // Stage 6：若變動的格 == 玩家所在格，同步更新場景立繪 terrain
         // （L3-07：transformTile 後三視角同步 — 主地圖紋理 / 小地圖色塊 / 場景立繪）。
@@ -983,6 +996,7 @@ public partial class MainMapRenderer : Control
             node.Visible = true;
             node.Position = center + pushOffset;
             node.SetTile(data.Terrain, data.IsPlaced, data.IsExplored);
+            node.SetTileName(ResolveTileName(r, c));
             node.SetTileQuad(
                 new Vector2(quad.BackLeft.X, quad.BackLeft.Y) - center,
                 new Vector2(quad.BackRight.X, quad.BackRight.Y) - center,

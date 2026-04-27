@@ -738,6 +738,17 @@ public sealed class WorldMap
         return ResolveStateTile(row, col);
     }
 
+    /// <summary>
+    /// state-mode：取得 (row, col) 上的 tile id（如 "village-store"），未放置回 null；
+    /// standalone：永遠回 null（無 tile id 概念，僅 MapTerrain enum）。
+    /// 用於 MainMapRenderer 在主地圖卡面渲染中文卡名。
+    /// </summary>
+    public string? GetTileId(int row, int col)
+    {
+        if (_state is null) return null;
+        return _state.TileMap.TryGetValue((col, row), out var placed) ? placed.TileId : null;
+    }
+
     private TileData ResolveStateTile(int row, int col)
     {
         // state.TileMap key 是 (X=col, Y=row)

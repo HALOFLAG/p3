@@ -35,6 +35,7 @@ public partial class OrbitPanel : GridContainer
     private Button? _expandButton;
     private AcceptDialog? _expandDialog;
     private GridContainer? _expandGrid;
+    private Tween? _pulseTween;
 
     public override void _Ready()
     {
@@ -96,6 +97,22 @@ public partial class OrbitPanel : GridContainer
     {
         if (card.CurrentInstance is null) return;
         EmitSignal(SignalName.EventCardClicked, card.CurrentInstance.Card.Id);
+    }
+
+    /// <summary>
+    /// Task 12 Stage 4 — 訊息氣泡點擊跳轉觸發；整個 ORBIT 區金色脈衝 1 秒（200ms 淡入 → 600ms hold → 200ms 淡出）。
+    /// 模式沿用 TileVisual.TriggerPulseHighlight。對 self.Modulate 做 tween — 繼承到所有 OrbitCardView child。
+    /// </summary>
+    public void TriggerPulseHighlight()
+    {
+        _pulseTween?.Kill();
+        Modulate = Colors.White;
+        var golden = new Color(1.5f, 1.3f, 0.7f);
+        var tween = CreateTween();
+        tween.TweenProperty(this, "modulate", golden, 0.2);
+        tween.TweenInterval(0.6);
+        tween.TweenProperty(this, "modulate", Colors.White, 0.2);
+        _pulseTween = tween;
     }
 
     public void Refresh()

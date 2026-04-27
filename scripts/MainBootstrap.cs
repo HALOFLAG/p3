@@ -36,6 +36,11 @@ public partial class MainBootstrap : Control
     private CardNarrative.Core.Map.TileTransformRegistry? _tileTransformRegistry;
     private readonly System.Random _orbitDemoRng = new();
 
+    // Task 12 Stage 3：訊息氣泡系統（規格書 §1.9）
+    private MessageBubbleService? _messageBubbles;
+    private MessageBubblePanel? _bubblePanel;
+    private CanvasLayer? _overlayLayer;
+
     public override void _Ready()
     {
         // 套用全域 Theme
@@ -163,6 +168,29 @@ public partial class MainBootstrap : Control
         _eventDialog = new EventResolutionDialog { Name = "EventResolutionDialog" };
         AddChild(_eventDialog);
         _eventDialog.EventResolved += OnEventResolved;
+
+        // === Task 12 Stage 3 · 訊息氣泡系統（規格書 §1.9）===
+        // service 純資料層；UI 元件 MessageBubblePanel 加在獨立 CanvasLayer (layer=11)，
+        // 永遠浮在主 UI 之上，不被 RightPanel/LeftPanel 遮。
+        _messageBubbles = new MessageBubbleService();
+        _overlayLayer = new CanvasLayer { Name = "OverlayLayer", Layer = 11 };
+        AddChild(_overlayLayer);
+        _bubblePanel = new MessageBubblePanel
+        {
+            Name = "MessageBubblePanel",
+            // 落在主地圖區左上角內側（LeftPanel 實寬 ~ 365 + ~15 padding 進入地圖區）
+            Position = new Vector2(380, 75),
+        };
+        _overlayLayer.AddChild(_bubblePanel);
+
+        _messageBubbles.MessagePushed += (_, _) =>
+            _bubblePanel?.SetBubbles(_messageBubbles.GetVisible(MessageBubbleVisibilityPhase.Action));
+        _messageBubbles.MessageCleared += (_, _) => _bubblePanel?.Clear();
+        _bubblePanel.BubbleClicked += OnMessageBubbleClicked;
+
+        // TopBar NEXT TURN 觸發 service.OnTurnEnd 清空（既有 EndTurnPressed signal 已連 mainMap.RequestAdvanceTurn）
+        if (topBar is not null)
+            topBar.EndTurnPressed += () => _messageBubbles?.OnTurnEnd();
 
         // === Task 9 Part A · 玩家移動 → 隨機晉升 1 張 ClassC → ClassA（模擬 tile-enter 觸發）===
         // mainMap 在更上方已 null 檢查並 return，此處保證非 null
@@ -431,8 +459,70 @@ public partial class MainBootstrap : Control
             }
         }
 
+        // Task 12 Stage 3：推 OrbitSlot 訊息（在 EndEventBatch 之後，讓 TurnLog 先寫完避免時序錯亂）
+        // success(0) / failure(2) = important 紅高亮；partial(1) = 一般。
+        // SourceId 用 eventId（事件即將被 RemoveById 移除，slot index 失效；
+        // Stage 4 跳轉時整體 OrbitPanel pulse，不依賴 slot index）。
+        bool isImportant = tier != 1;
+        _messageBubbles?.Push(
+            text: $"ORBIT 結算「{eventId}」→ {tierName}",
+            source: MessageBubbleSource.OrbitSlot,
+            sourceId: eventId,
+            timestamp: System.DateTime.UtcNow,
+            isImportant: isImportant);
+
         _orbit.RemoveById(eventId);
     }
+
+    /// <summary>
+    /// Task 12 Stage 3+4：使用者點訊息氣泡 popup 中某筆 bubble，
+    /// MessageBubblePanel emit BubbleClicked(bubbleId) → 此處用 service 解析跳轉目標 → 觸發對應 panel 脈衝高亮。
+    /// CallDeferred 延遲到下一 idle frame，避免 race（若該 panel 正有其他動畫）。
+    /// </summary>
+    private void OnMessageBubbleClicked(int bubbleId)
+    {
+        if (_messageBubbles is null) return;
+        var bubble = _messageBubbles.Bubbles.FirstOrDefault(b => b.Id == bubbleId);
+        if (bubble is null) return;
+        var target = _messageBubbles.RequestNavigation(bubble);
+        GD.Print($"[MainBootstrap] MessageBubble clicked id={bubbleId} → {target.Kind}/{target.TargetId}");
+
+        switch (target.Kind)
+        {
+            case NavigationKind.Orbit when _orbitPanel is not null:
+                _orbitPanel.CallDeferred(nameof(OrbitPanel.TriggerPulseHighlight));
+                break;
+            case NavigationKind.Companion when !string.IsNullOrEmpty(target.TargetId):
+                var leftPanel = GetNodeOrNull<LeftPanel>("ScreenStack/BodyRow/LeftPanel");
+                leftPanel?.CallDeferred(nameof(LeftPanel.TriggerCompanionPulseHighlight), target.TargetId);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Task 12 Stage 4 — dev-only debug：手動推一筆 CompanionCard 訊息，驗 Phase 2 同伴跳轉路徑。
+    /// Phase 2 NpcAi runtime 未接，CompanionCard 來源無真實 push 入口；此 helper 給 L2 手測使用。
+    /// 玩家在 console 印的 ORBIT 結算 log 之外按 F12 即觸發（暫時綁 F12，Phase 3 任務 14 接 NpcAi 後刪）。
+    /// </summary>
+    private void DebugPushCompanionMessage()
+    {
+        if (_messageBubbles is null || _gameState is null) return;
+        var firstCompanion = _gameState.Companions.FirstOrDefault();
+        if (firstCompanion is null) return;
+        _messageBubbles.Push(
+            text: $"[DEBUG] {firstCompanion.CompanionId}：「測試訊息（Stage 4 跳轉路徑）」",
+            source: MessageBubbleSource.CompanionCard,
+            sourceId: firstCompanion.CompanionId,
+            timestamp: System.DateTime.UtcNow,
+            isImportant: false);
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (@event is InputEventKey { Pressed: true, Keycode: Key.F12 })
+            DebugPushCompanionMessage();
+    }
+
 
     /// <summary>
     /// Stage 5：tile-side transformations 觸發 — 從 registry 索引 eventId 對應規則，

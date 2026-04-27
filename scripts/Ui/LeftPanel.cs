@@ -28,6 +28,7 @@ public partial class LeftPanel : PanelContainer
     // Companion block
     private VBoxContainer? _companionBox;
     private Label? _companionHeaderHint;
+    private Tween? _companionPulseTween;
 
     // Equipment grid
     private readonly Dictionary<EquipmentSlot, EquipmentSlotView> _primarySlots = new();
@@ -358,6 +359,23 @@ public partial class LeftPanel : PanelContainer
         {
             _companionBox.AddChild(MakeSkillRow($"專長：{companion.Specialty}", Palette.InkLight));
         }
+    }
+
+    /// <summary>
+    /// Task 12 Stage 4 — 訊息氣泡點擊 CompanionCard 訊息跳轉觸發；同伴卡區金色脈衝 1 秒。
+    /// Phase 2 只有 1 名同伴，companionId 參數保留給 Phase 3 多同伴擴充用，目前忽略並 pulse 整個 _companionBox。
+    /// </summary>
+    public void TriggerCompanionPulseHighlight(string companionId)
+    {
+        if (_companionBox is null) return;
+        _companionPulseTween?.Kill();
+        _companionBox.Modulate = Colors.White;
+        var golden = new Color(1.5f, 1.3f, 0.7f);
+        var tween = CreateTween();
+        tween.TweenProperty(_companionBox, "modulate", golden, 0.2);
+        tween.TweenInterval(0.6);
+        tween.TweenProperty(_companionBox, "modulate", Colors.White, 0.2);
+        _companionPulseTween = tween;
     }
 
     public void OnHpChanged(int hp, int hpMax)

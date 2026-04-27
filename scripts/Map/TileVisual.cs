@@ -22,6 +22,7 @@ public partial class TileVisual : Node2D
     private Polygon2D? _frontSidePolygon;  // 前緣下方厚度
     private Polygon2D? _leftSidePolygon;   // 左斜邊厚度
     private Polygon2D? _rightSidePolygon;  // 右斜邊厚度
+    private Label? _nameLabel;             // Phase 2：卡面上方中文卡名（quick visual aid，方便 L2 手測辨識）
     private Polygon2D? _overlayPolygon;    // 半透明色蓋層（LegalPlacement / MoveTarget / PlayerMark）
     private Polygon2D? _pulsePolygon;      // Task 10：小地圖點擊時短暫脈動高亮（與 _overlayPolygon 獨立）
     private Tween? _pulseTween;
@@ -77,6 +78,24 @@ public partial class TileVisual : Node2D
         };
         AddChild(_topPolygon);
 
+        // 卡名 label：白字黑邊，置於卡面上方（後緣內側）。
+        // SetTileQuad 會根據後緣寬度設定 Position/Size — 與卡面同寬。
+        _nameLabel = new Label
+        {
+            Name = "NameLabel",
+            Text = string.Empty,
+            Visible = false,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            ClipText = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _nameLabel.AddThemeColorOverride("font_color", Colors.White);
+        _nameLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
+        _nameLabel.AddThemeConstantOverride("outline_size", 4);
+        _nameLabel.AddThemeFontSizeOverride("font_size", 14);
+        AddChild(_nameLabel);
+
         // Overlay 蓋層
         _overlayPolygon = new Polygon2D
         {
@@ -117,6 +136,19 @@ public partial class TileVisual : Node2D
         if (_frontSidePolygon != null) _frontSidePolygon.Visible = isPlaced;
         if (_leftSidePolygon != null) _leftSidePolygon.Visible = isPlaced;
         if (_rightSidePolygon != null) _rightSidePolygon.Visible = isPlaced;
+        if (_nameLabel != null) _nameLabel.Visible = isPlaced && !string.IsNullOrEmpty(_nameLabel.Text);
+    }
+
+    /// <summary>
+    /// Phase 2 quick visual aid：設定卡名顯示文字。
+    /// MainMapRenderer 從 BackingModule.Tiles[id].Name 反查後傳入；null/空字串 → 隱藏 label。
+    /// 顯示條件：tile 已 placed（即使 card-back 未探索也顯示，因 RightPanel slot1 在持有時已暴露名）。
+    /// </summary>
+    public void SetTileName(string? name)
+    {
+        if (_nameLabel is null) return;
+        _nameLabel.Text = name ?? string.Empty;
+        _nameLabel.Visible = _isPlaced && !string.IsNullOrEmpty(_nameLabel.Text);
     }
 
     public void SetOverlay(OverlayKind kind)
@@ -207,6 +239,15 @@ public partial class TileVisual : Node2D
         if (_pulsePolygon != null)
         {
             _pulsePolygon.Polygon = quad;
+        }
+
+        // 卡名 label：與卡面後緣同寬，貼在後緣內側（卡面上方）
+        if (_nameLabel != null)
+        {
+            const float labelHeight = 22f;
+            var width = backRight.X - backLeft.X;
+            _nameLabel.Position = new Vector2(backLeft.X, backLeft.Y);
+            _nameLabel.Size = new Vector2(width, labelHeight);
         }
 
         // === 2. 三面側緣厚度（左/右/前下方）===
