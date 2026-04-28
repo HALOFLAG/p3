@@ -51,6 +51,15 @@ public partial class MainMapRenderer : Control
     private ActionTriggerPopup? _popup;
     private ConfirmationDialog? _moveConfirm;
     private (int Row, int Col)? _pendingMoveTarget;
+    // Phase 3 移動 UX 改造：多格路徑（從 player 走到 goal，含 goal）+ 規劃服務 + 路徑預覽 overlay
+    private System.Collections.Generic.List<CardNarrative.Core.State.Position>? _pendingPath;
+    private readonly CardNarrative.Core.Services.MapPathFinding _pathFinding = new();
+    private PathPreviewOverlay? _pathPreview;
+    private (int Row, int Col)? _hoveredTile;
+    /// <summary>v1.10 殘影修正：移動進行中 suppress 預覽重算（OnPlayerMoved / UpdateHoverFromMousePosition / UpdateAllTiles 都尊重）。</summary>
+    private bool _previewSuppressed;
+    /// <summary>v1.11 兩階段移動：閒置時無追蹤；第一次 click 地塊 → 進入預覽模式（cursor 跟隨）；第二次 click → 走。</summary>
+    private bool _previewMode;
 
     // Demo Skill 屬性（規格書 §3.3 觀察用 = 綠探索）
     private const int DemoSkill = 3;
@@ -340,12 +349,54 @@ public partial class MainMapRenderer : Control
         UnsubscribeWorldMap();
     }
 
+    /// <summary>
+    /// v1.11：全 viewport 監聽預覽模式退出條件：
+    /// - 左鍵 click 地圖區外 → 退出（地圖區內由 _GuiInput 處理）
+    /// - 右鍵 click 任意位置 → 退出（取消快捷鍵）
+    /// _GuiInput 只在 Control 範圍內觸發，外部 click 被其他 Control 攔截 → 必須用 _Input 全域監聽。
+    /// </summary>
+    public override void _Input(InputEvent @event)
+    {
+        if (!_previewMode) return;
+        if (@event is not InputEventMouseButton { Pressed: true } mb) return;
+
+        if (mb.ButtonIndex == MouseButton.Right)
+        {
+            // 右鍵：任意位置退出預覽
+            ExitPreviewMode();
+            return;
+        }
+
+        if (mb.ButtonIndex == MouseButton.Left)
+        {
+            var globalRect = GetGlobalRect();
+            if (!globalRect.HasPoint(mb.GlobalPosition))
+            {
+                ExitPreviewMode();
+            }
+        }
+    }
+
     public override void _GuiInput(InputEvent @event)
     {
-        // MapExpand 時讓 ghost tile 跟隨滑鼠
-        if (_ghostTile is { Visible: true } && @event is InputEventMouseMotion motion)
+        // Phase 3 移動 UX：mouse motion → 計算 hover tile，更新路徑預覽 overlay
+        // （Control 攔截 mouse event 走 _GuiInput，TileVisual 內 Area2D 收不到 hover signal）
+        if (@event is InputEventMouseMotion motionEv)
         {
-            _ghostTile.Position = new Vector2(motion.Position.X - GhostSize / 2f, motion.Position.Y - GhostSize / 2f);
+            // MapExpand 時讓 ghost tile 跟隨滑鼠
+            if (_ghostTile is { Visible: true })
+            {
+                _ghostTile.Position = new Vector2(motionEv.Position.X - GhostSize / 2f, motionEv.Position.Y - GhostSize / 2f);
+            }
+            UpdateHoverFromMousePosition(motionEv.Position);
+            return;
+        }
+
+        // v1.11：Esc 鍵退出預覽模式
+        if (@event is InputEventKey { Pressed: true, Keycode: Key.Escape } && _previewMode)
+        {
+            ExitPreviewMode();
+            AcceptEvent();
             return;
         }
 
@@ -376,6 +427,12 @@ public partial class MainMapRenderer : Control
                 // 點擊空白區（非任何地塊）→ 取消放置
                 _worldMap.CancelMapExpand();
                 AppendLog("已取消放置（點擊空白區）。");
+                AcceptEvent();
+            }
+            else if (_previewMode)
+            {
+                // v1.11：預覽模式中點空白區 → 退出
+                ExitPreviewMode();
                 AcceptEvent();
             }
         }
@@ -563,9 +620,14 @@ public partial class MainMapRenderer : Control
             node.Row = r;
             node.Col = c;
             // TileClicked signal 仍保留作為診斷/備用，主 click 走 _GuiInput
+            // hover 也走 _GuiInput（Control mouse chain 攔截 Area2D mouse event）
             _tileLayer.AddChild(node);
             _tileNodes[r, c] = node;
         }
+
+        // 路徑預覽 overlay：加在 _tileLayer 之上，z-index 在 ParallaxScene 立繪盒之下但高於 tile
+        _pathPreview = new PathPreviewOverlay { Name = "PathPreviewOverlay" };
+        _tileLayer.AddChild(_pathPreview);
     }
 
     private void SubscribeWorldMap()
@@ -701,6 +763,10 @@ public partial class MainMapRenderer : Control
         // log 由 AttemptMove 統一處理（含 AP 消耗）→ 此處只更新 UI
         EmitSignal(SignalName.PlayerPositionChanged, newRow, newCol);
         AnimateCameraToPlayer(oldRow, oldCol, newRow, newCol);
+        // v1.10：移動進行中 suppressed → 不重算 overlay（避免逐格收縮殘影）
+        // 走完後 ExecutePendingPath 末尾會解鎖 + 主動重算
+        if (_previewSuppressed) return;
+        if (_hoveredTile is { } cur) UpdatePathPreviewForHover(cur.Row, cur.Col);
     }
 
     /// <summary>
@@ -825,7 +891,19 @@ public partial class MainMapRenderer : Control
             case InteractionMode.Idle:
                 if ((row, col) == _worldMap.PlayerPos)
                 {
+                    // 點玩家自身格 → 開行動選單（觀察 / 對話 / 休息）；同時退出預覽模式
+                    if (_previewMode) ExitPreviewMode();
                     ShowPopupAtPlayer();
+                }
+                else if (!_previewMode)
+                {
+                    // v1.11 第一次 click 地塊 → 進入預覽模式 + 立即顯示路徑（cursor=pin）
+                    EnterPreviewMode(row, col);
+                }
+                else
+                {
+                    // v1.11 預覽模式中第二次 click 地塊 → 走（cursor 永遠==click 位置，視為確認）
+                    RequestMoveToTile(row, col);
                 }
                 break;
         }
@@ -888,13 +966,218 @@ public partial class MainMapRenderer : Control
 
     private void OnTalkSelected() => AppendLog("對話：這個地塊沒有可對話對象。");
 
+    /// <summary>v1.11 — 進入預覽模式（第一次 click 地塊觸發）。立即顯示路徑 + cursor 跟隨。</summary>
+    private void EnterPreviewMode(int row, int col)
+    {
+        _previewMode = true;
+        _hoveredTile = (row, col);
+        UpdatePathPreviewForHover(row, col);
+    }
+
+    /// <summary>v1.11 — 退出預覽模式（點玩家自身 / 點空白 / Esc / 走完移動 觸發）。Clear overlay。</summary>
+    private void ExitPreviewMode()
+    {
+        _previewMode = false;
+        _hoveredTile = null;
+        _pathPreview?.Clear();
+    }
+
+    /// <summary>
+    /// Phase 3 — 用滑鼠座標反查當前 hover tile（與 click 用同一 FindClickedTile 邏輯），
+    /// 與 _hoveredTile 比對；若變更則更新 overlay。v1.10：移動進行中 suppressed → skip。
+    /// v1.11：未進入預覽模式 → skip。
+    /// </summary>
+    private void UpdateHoverFromMousePosition(Vector2 mousePos)
+    {
+        if (_previewSuppressed) return;
+        // v1.11：未進入預覽模式 → mouse 動不追蹤（idle 畫面乾淨）
+        if (!_previewMode) return;
+        var tile = FindClickedTile(mousePos);
+        if (tile is null)
+        {
+            if (_hoveredTile is not null)
+            {
+                _hoveredTile = null;
+                _pathPreview?.Clear();
+            }
+            return;
+        }
+
+        var (row, col) = tile.Value;
+        if (_hoveredTile is { } cur && cur.Row == row && cur.Col == col) return;
+        _hoveredTile = (row, col);
+        UpdatePathPreviewForHover(row, col);
+    }
+
+    private void UpdatePathPreviewForHover(int row, int col)
+    {
+        if (_pathPreview is null) return;
+
+        // 玩家自身格不顯示預覽
+        if ((row, col) == _worldMap.PlayerPos)
+        {
+            _pathPreview.Clear();
+            return;
+        }
+
+        var state = _worldMap.BackingState;
+        if (state is null)
+        {
+            // standalone 模式不支援 BFS 預覽
+            _pathPreview.Clear();
+            return;
+        }
+
+        var (pr, pc) = _worldMap.PlayerPos;
+        var start = new CardNarrative.Core.State.Position(pc, pr);
+        var goal = new CardNarrative.Core.State.Position(col, row);
+        var path = _pathFinding.FindPath(state, start, goal);
+        if (path.Count == 0)
+        {
+            _pathPreview.Clear();
+            return;
+        }
+
+        // path Position 是 (X=col, Y=row) → 取對應 _tileNodes[row, col].Position 為 tile center
+        var pathCenters = new System.Collections.Generic.List<Godot.Vector2>(path.Count);
+        foreach (var step in path)
+        {
+            int sr = step.Y, sc = step.X;
+            if (sr >= 0 && sr < WorldMap.Size && sc >= 0 && sc < WorldMap.Size)
+                pathCenters.Add(_tileNodes[sr, sc].Position);
+        }
+        var playerCenter = _tileNodes[pr, pc].Position;
+        bool firstAvailable = !_worldMap.FirstMoveUsedThisTurn;
+        _pathPreview.SetPreview(playerCenter, pathCenters, _worldMap.Ap, firstAvailable);
+    }
+
+    /// <summary>
+    /// Phase 3 移動 UX 改造 — 玩家點任意非玩家格時觸發。BFS 計算最短路徑，
+    /// 路徑非空時顯示確認對話框（路徑長 + AP cost + 不足提示）；空則 AppendLog 提示無路。
+    /// </summary>
+    private void RequestMoveToTile(int row, int col)
+    {
+        var state = _worldMap.BackingState;
+        if (state is null)
+        {
+            // standalone 模式不支援多格路徑 — fallback 既有單格 IsLegalMoveTarget 邏輯
+            if (_worldMap.IsLegalMoveTarget(row, col))
+            {
+                _pendingMoveTarget = (row, col);
+                if (_moveConfirm != null)
+                {
+                    int apCost = _worldMap.FirstMoveUsedThisTurn ? 1 : 0;
+                    _moveConfirm.DialogText = $"【 確認移動 】\n\n移動到 ({row}, {col})？\n消耗：{(apCost == 0 ? "免費" : $"{apCost} AP")}";
+                    _moveConfirm.PopupCentered();
+                }
+                else AttemptMove(row, col);
+            }
+            return;
+        }
+
+        // state-mode：BFS 路徑規劃（TileMap key 是 (X=col, Y=row)）
+        var start = state.CurrentPlayer.Position;
+        var goal = new CardNarrative.Core.State.Position(col, row);
+        var path = _pathFinding.FindPath(state, start, goal);
+        if (path.Count == 0)
+        {
+            AppendLog($"({row},{col}) 無路可達（需四方向相鄰已放置格相連）。");
+            return;
+        }
+
+        bool firstMoveAvailable = !_worldMap.FirstMoveUsedThisTurn;
+        int apCostTotal = CardNarrative.Core.Services.MapPathFinding.CalculateApCost(path.Count, firstMoveAvailable);
+        int apHave = _worldMap.Ap;
+
+        // Q2=B：AP 不足直接拒絕，提示最遠可達格
+        if (apCostTotal > apHave)
+        {
+            int farthestStepIdx = ComputeFarthestStepIndex(path.Count, firstMoveAvailable, apHave);
+            if (farthestStepIdx < 0)
+            {
+                AppendLog($"({row},{col}) 距離 {path.Count} 格，需 {apCostTotal} AP；目前 {apHave} AP，無法移動。");
+            }
+            else
+            {
+                var farthest = path[farthestStepIdx];
+                AppendLog($"({row},{col}) 需 {apCostTotal} AP，當前 {apHave} AP — 最遠可走到 ({farthest.Y},{farthest.X})（第 {farthestStepIdx + 1} 格）。");
+            }
+            return;
+        }
+
+        // Q1=A：AP 充足 → 省略確認對話框，直接逐格走完
+        _pendingPath = new System.Collections.Generic.List<CardNarrative.Core.State.Position>(path);
+        _pendingMoveTarget = null;
+        string costNote = firstMoveAvailable && path.Count >= 1
+            ? $"{path.Count} 格（首格免費，{apCostTotal} AP）"
+            : $"{path.Count} 格（{apCostTotal} AP）";
+        AppendLog($"移動：{costNote} → ({row},{col})");
+        // v1.10：移動開始 → 立即清空 overlay + 鎖住，避免逐格收縮殘影
+        _previewSuppressed = true;
+        _pathPreview?.Clear();
+        ExecutePendingPath();
+    }
+
+    /// <summary>
+    /// Q2 helper：計算 AP 內最遠可達 step 的 index（0-based）。回 -1 = 無 AP 走任何 step。
+    /// </summary>
+    private static int ComputeFarthestStepIndex(int pathLen, bool firstMoveAvailable, int apHave)
+    {
+        int cumulative = 0;
+        int farthest = -1;
+        for (int i = 0; i < pathLen; i++)
+        {
+            int stepCost = (i == 0 && firstMoveAvailable) ? 0 : 1;
+            cumulative += stepCost;
+            if (cumulative <= apHave) farthest = i;
+            else break;
+        }
+        return farthest;
+    }
+
     private void OnMoveConfirmed()
     {
-        if (_pendingMoveTarget is { } target)
+        // Phase 3：優先走多格路徑；無路徑則 fallback 既有單格 _pendingMoveTarget
+        if (_pendingPath is { Count: > 0 })
+        {
+            ExecutePendingPath();
+        }
+        else if (_pendingMoveTarget is { } target)
         {
             AttemptMove(target.Row, target.Col);
         }
         _pendingMoveTarget = null;
+        _pendingPath = null;
+    }
+
+    /// <summary>
+    /// 逐格走完 _pendingPath（每格透過 TryMovePlayerTo 套規格 §1.5 鄰接 + AP 規則）。
+    /// Stage A：每格之間插入 150ms delay，多格移動有節奏感（仿格子遊戲標準動畫）。
+    /// </summary>
+    private async void ExecutePendingPath()
+    {
+        if (_pendingPath is null || _pendingPath.Count == 0) return;
+        var pathCopy = new System.Collections.Generic.List<CardNarrative.Core.State.Position>(_pendingPath);
+        _pendingPath = null;
+
+        const double StepDelay = 0.30; // 每格 300ms
+        for (int i = 0; i < pathCopy.Count; i++)
+        {
+            var step = pathCopy[i];
+            var result = _worldMap.TryMovePlayerTo(step.Y, step.X);
+            if (result != MovePlayerResult.Ok)
+            {
+                AppendLog($"路徑中斷於 ({step.Y},{step.X})：{result}");
+                break;
+            }
+            // 最後一格不必再等
+            if (i < pathCopy.Count - 1)
+                await ToSignal(GetTree().CreateTimer(StepDelay), SceneTreeTimer.SignalName.Timeout);
+        }
+
+        // v1.11：移動完成 → 解鎖 + 退出預覽模式（無 hover 追蹤、畫面乾淨）
+        _previewSuppressed = false;
+        ExitPreviewMode();
     }
 
     private void AttemptMove(int row, int col)
@@ -922,6 +1205,7 @@ public partial class MainMapRenderer : Control
     private void OnMoveCanceled()
     {
         _pendingMoveTarget = null;
+        _pendingPath = null;
         _worldMap.CancelMoveMode();
         AppendLog("已取消移動。");
     }
@@ -1014,6 +1298,10 @@ public partial class MainMapRenderer : Control
         }
 
         UpdateParallaxScene();
+
+        // v1.10：tile layout 變動後（中鍵拖曳 / Reset / camera tween）若 hover preview 仍在 → 重算座標
+        if (_hoveredTile is { } cur && !_previewSuppressed)
+            UpdatePathPreviewForHover(cur.Row, cur.Col);
     }
 
     /// <summary>場景立繪：跟隨玩家所在地塊（含 camera offset 與 push-apart offset），floor 與 player tile 對齊。</summary>

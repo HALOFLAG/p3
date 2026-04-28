@@ -21,7 +21,10 @@ public partial class ActionTriggerPopup : PanelContainer
         // 蓋過 ParallaxScene (ZIndex=5)：行動選單必須畫在立繪盒上面，否則會被遮住。
         ZIndex = 20;
         ZAsRelative = false;
-        SetupButton("VBox/MoveButton", () => EmitSignal(SignalName.MoveSelected));
+        // Phase 3 移動 UX 改造：移動入口改為「直接點目標格」，行動選單不再提供移動項
+        // MoveButton 保留於 .tscn 但隱藏（向後相容）；MoveSelected signal 仍存在但無人觸發
+        var moveBtn = GetNodeOrNull<Button>("VBox/MoveButton");
+        if (moveBtn != null) moveBtn.Visible = false;
         SetupButton("VBox/RestButton", () => EmitSignal(SignalName.RestSelected));
         SetupButton("VBox/ObserveButton", () => EmitSignal(SignalName.ObserveSelected));
         SetupButton("VBox/TalkButton", () => EmitSignal(SignalName.TalkSelected));

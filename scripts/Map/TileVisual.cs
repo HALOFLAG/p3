@@ -13,6 +13,10 @@ public partial class TileVisual : Node2D
     [Signal]
     public delegate void TileClickedEventHandler(int row, int col);
 
+    /// <summary>Phase 3 移動 UX：mouse hover 進入 / 離開時 emit；MainMapRenderer 訂閱以更新路徑預覽 overlay。</summary>
+    [Signal]
+    public delegate void HoverChangedEventHandler(int row, int col, bool entered);
+
     public enum OverlayKind { None, LegalPlacement, MoveTarget, PlayerMark }
 
     /// <summary>側緣厚度相對前後 Y 跨距的比例。</summary>
@@ -302,12 +306,14 @@ public partial class TileVisual : Node2D
     {
         _isHovered = true;
         UpdateModulate();
+        EmitSignal(SignalName.HoverChanged, Row, Col, true);
     }
 
     private void OnMouseExited()
     {
         _isHovered = false;
         UpdateModulate();
+        EmitSignal(SignalName.HoverChanged, Row, Col, false);
     }
 
     private void OnAreaInput(Node viewport, InputEvent @event, long shapeIdx)
