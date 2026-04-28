@@ -788,6 +788,11 @@ public sealed class WorldMap
         return Math.Abs(row - pr) + Math.Abs(col - pc) == 1;
     }
 
+    /// <summary>
+    /// v1.12 Stage 2 — state-mode：填批次（最多 3 張）；standalone 行為不變（單張 dequeue）。
+    /// state-mode 不再直接設定 HeldTileId — 由 UI 呼 <see cref="SelectFromBatch"/> 從批次選 1 張。
+    /// 既有批次（如先前 Cancel 留下的）會被沿用，不重新抽。
+    /// </summary>
     public bool BeginMapExpand()
     {
         if (Mode != InteractionMode.Idle) return false;
@@ -798,11 +803,48 @@ public sealed class WorldMap
         }
         else
         {
-            if (_state.TileDeck.Count == 0) return false;
-            _state.CurrentPlayer.HeldTileId = _state.TileDeck[0];
-            _state.TileDeck.RemoveAt(0);
+            var batch = _state.TileChoiceBatch;
+            if (batch.Count == 0)
+            {
+                int fill = Math.Min(3, _state.TileDeck.Count);
+                for (int i = 0; i < fill; i++)
+                {
+                    batch.Add(_state.TileDeck[0]);
+                    _state.TileDeck.RemoveAt(0);
+                }
+            }
+            if (batch.Count == 0) return false; // 牌堆與批次皆空
         }
         Mode = InteractionMode.MapExpand;
+        ModeChanged?.Invoke();
+        return true;
+    }
+
+    /// <summary>
+    /// v1.12 Stage 2 — state-mode：從批次選一張為 HeldTileId（規格書 §3.1.4）。
+    /// 若已持有：與 batch[idx] 互換（re-select），idx 位置不變、批次長度不變；
+    /// 若未持有：取 batch[idx] 為 held，並 RemoveAt(idx)（緊湊 List）。
+    /// standalone 不支援批次，永遠回 false。
+    /// </summary>
+    public bool SelectFromBatch(int idx)
+    {
+        if (_state is null) return false;
+        if (Mode != InteractionMode.MapExpand) return false;
+        var batch = _state.TileChoiceBatch;
+        if (idx < 0 || idx >= batch.Count) return false;
+
+        var heldId = _state.CurrentPlayer.HeldTileId;
+        if (heldId is null)
+        {
+            _state.CurrentPlayer.HeldTileId = batch[idx];
+            batch.RemoveAt(idx);
+        }
+        else
+        {
+            // re-select：互換（idx 位置保留，方便 UI slot 視覺穩定）
+            _state.CurrentPlayer.HeldTileId = batch[idx];
+            batch[idx] = heldId;
+        }
         ModeChanged?.Invoke();
         return true;
     }
@@ -837,14 +879,18 @@ public sealed class WorldMap
         return true;
     }
 
+    /// <summary>
+    /// v1.12 Stage 2 — state-mode：若持有則退回批次末尾（緊湊 List）；批次本身保留供下次 Begin 沿用；
+    /// standalone 行為不變（held 退回 _tileDeck 最前端）。Mode → Idle。
+    /// </summary>
     public void CancelMapExpand()
     {
         if (Mode != InteractionMode.MapExpand) return;
-        if (HeldTile is null) return;
         if (_state is null)
         {
+            if (_heldTile is null) return;
             var newDeck = new Queue<MapTerrain>();
-            newDeck.Enqueue(_heldTile!.Value);
+            newDeck.Enqueue(_heldTile.Value);
             foreach (var t in _tileDeck) newDeck.Enqueue(t);
             _tileDeck.Clear();
             foreach (var t in newDeck) _tileDeck.Enqueue(t);
@@ -852,10 +898,13 @@ public sealed class WorldMap
         }
         else
         {
-            // 把 heldTileId 放回 state.TileDeck 最前端
-            var heldId = _state.CurrentPlayer.HeldTileId!;
-            _state.TileDeck.Insert(0, heldId);
-            _state.CurrentPlayer.HeldTileId = null;
+            // state-mode：held（若有）退回 batch 末尾，批次保留待下次 BeginMapExpand 沿用
+            var heldId = _state.CurrentPlayer.HeldTileId;
+            if (heldId is not null)
+            {
+                _state.TileChoiceBatch.Add(heldId);
+                _state.CurrentPlayer.HeldTileId = null;
+            }
         }
         Mode = InteractionMode.Idle;
         ModeChanged?.Invoke();
@@ -1014,6 +1063,28 @@ public sealed class WorldMap
 
     public static bool IsInBounds(int row, int col)
         => row >= 0 && row < Size && col >= 0 && col < Size;
+
+    /// <summary>
+    /// v1.12 §1.5 / §3.1.4 — Tag 配對相容性判定（OR 邏輯）。
+    /// 任一邊 tag list 為空 → 視為「中立」自動相容（向下相容無 tag 的舊模組）；
+    /// 否則需至少共享 1 個 tag。
+    /// 用於：放置時候選 vs 相鄰已放置；移動時當前格 vs 目標格。
+    /// </summary>
+    public static bool TagsCompatible(
+        IReadOnlyList<string>? candidate,
+        IReadOnlyList<string>? neighbor)
+    {
+        if (candidate is null || candidate.Count == 0) return true;
+        if (neighbor is null || neighbor.Count == 0) return true;
+        for (int i = 0; i < candidate.Count; i++)
+        {
+            for (int j = 0; j < neighbor.Count; j++)
+            {
+                if (candidate[i] == neighbor[j]) return true;
+            }
+        }
+        return false;
+    }
 
     private bool HasPlacedNeighbor(int row, int col)
     {

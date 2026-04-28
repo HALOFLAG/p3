@@ -177,6 +177,14 @@ public sealed class GameState
     public Dictionary<string, JsonElement> Flags { get; } = new();
     public Dictionary<(int X, int Y), PlacedTile> TileMap { get; } = new();
     public List<string> TileDeck { get; } = new();
+
+    /// <summary>
+    /// v1.12 Stage 2 — 「3 張選 1」批次選擇（規格書 §1.5 / §3.1.4）。
+    /// BeginMapExpand 時一次抽 3 張到此 List；玩家透過 SelectFromBatch(idx) 取一張為 HeldTileId。
+    /// 緊湊 List 模式：選取後 RemoveAt(idx)；re-select 時與當前 held 互換（保留 idx 位置）；
+    /// CancelMapExpand 把 held 退回 List 末尾。Mode=Idle 時批次仍持留，下次 BeginMapExpand 沿用。
+    /// </summary>
+    public List<string> TileChoiceBatch { get; } = new();
     public bool UsedFamiliarFreeMoveThisTurn { get; set; }
     /// <summary>Set once <see cref="Services.TurnLoop.TriggerStartingTileEntry"/> has applied
     /// the starting tile's OnEnter effects and tileEnter event. Guards against double-application.</summary>

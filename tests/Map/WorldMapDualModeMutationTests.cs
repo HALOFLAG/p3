@@ -95,21 +95,25 @@ public class WorldMapDualModeMutationTests
     // === Tile / HeldTile dispatch ===
 
     [Fact]
-    public void StateMode_BeginMapExpand_DrawsFromStateTileDeck()
+    public void StateMode_BeginMapExpand_FillsBatchFromStateTileDeck()
     {
+        // v1.12 Stage 2：BeginMapExpand 改為填批次（最多 3 張）；HeldTile 由 SelectFromBatch 設定。
         var (module, state, map) = NewStateBackedMap();
         var initialDeckCount = state.TileDeck.Count;
         var topId = state.TileDeck[0];
-        initialDeckCount.Should().BeGreaterThan(0);
+        initialDeckCount.Should().BeGreaterThan(2);
 
         map.BeginMapExpand().Should().BeTrue();
 
         map.Mode.Should().Be(InteractionMode.MapExpand);
-        map.HeldTile.Should().NotBeNull();
-        // HeldTile 應反映該 tile 的 visualProfile.terrain
+        state.TileChoiceBatch.Count.Should().Be(3);
+        state.TileChoiceBatch[0].Should().Be(topId);
+        state.TileDeck.Count.Should().Be(initialDeckCount - 3);
+
+        // SelectFromBatch(0) 後 HeldTile 應派生 visualProfile.terrain
+        map.SelectFromBatch(0).Should().BeTrue();
         var topTile = module.Tiles[topId];
         map.HeldTile.Should().Be(TileVisualProfileResolver.ResolveTerrain(topTile));
-        state.TileDeck.Count.Should().Be(initialDeckCount - 1);
     }
 
     [Fact]
@@ -118,6 +122,7 @@ public class WorldMapDualModeMutationTests
         var (module, state, map) = NewStateBackedMap();
         var topId = state.TileDeck[0];
         map.BeginMapExpand();
+        map.SelectFromBatch(0);
 
         // 起點 (4,4) 的鄰居 (3,4) — 但 visualProfile 未必通過 tag rule
         // 這裡只測 state.TileMap 寫入，不挑 tile id；用 (4,5) 直接放
@@ -132,18 +137,25 @@ public class WorldMapDualModeMutationTests
     }
 
     [Fact]
-    public void StateMode_CancelMapExpand_ReturnsHeldTileToStateDeck()
+    public void StateMode_CancelMapExpand_ReturnsHeldToBatchEnd()
     {
+        // v1.12 Stage 2：Cancel 改為 held 退批次末尾；批次本身保留供下次 Begin 沿用，不還回 TileDeck。
         var (_, state, map) = NewStateBackedMap();
         var initialDeckCount = state.TileDeck.Count;
-        var topId = state.TileDeck[0];
         map.BeginMapExpand();
-        state.TileDeck.Count.Should().Be(initialDeckCount - 1);
+        map.SelectFromBatch(0); // 從批次選 1 張
+        var heldId = state.CurrentPlayer.HeldTileId!;
+        // batch 剩 2 張，TileDeck 少了 3 張
+        state.TileChoiceBatch.Count.Should().Be(2);
+        state.TileDeck.Count.Should().Be(initialDeckCount - 3);
 
         map.CancelMapExpand();
 
-        state.TileDeck.Count.Should().Be(initialDeckCount);
-        state.TileDeck[0].Should().Be(topId);
+        // held 退到批次末尾，批次回到 3 張，TileDeck 維持 -3
+        state.CurrentPlayer.HeldTileId.Should().BeNull();
+        state.TileChoiceBatch.Count.Should().Be(3);
+        state.TileChoiceBatch[^1].Should().Be(heldId);
+        state.TileDeck.Count.Should().Be(initialDeckCount - 3);
         map.Mode.Should().Be(InteractionMode.Idle);
         map.HeldTile.Should().BeNull();
     }

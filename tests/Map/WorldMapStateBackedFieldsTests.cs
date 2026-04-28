@@ -43,14 +43,16 @@ public class WorldMapStateBackedFieldsTests
     [Fact]
     public void StateMode_BeginMapExpand_WritesHeldTileIdToGameState()
     {
+        // v1.12 Stage 2：BeginMapExpand 改為填批次，HeldTileId 由 SelectFromBatch(0) 設定。
         var (_, state, map) = NewStateBackedMap();
         var topId = state.TileDeck[0];
 
         map.BeginMapExpand().Should().BeTrue();
+        map.SelectFromBatch(0).Should().BeTrue();
 
         state.CurrentPlayer.HeldTileId.Should().Be(topId);
         map.HeldTileId.Should().Be(topId);
-        state.TileDeck.Should().NotContain(topId).And.NotBeEmpty();
+        state.TileDeck.Should().NotContain(topId);
     }
 
     [Fact]
@@ -58,6 +60,7 @@ public class WorldMapStateBackedFieldsTests
     {
         var (_, state, map) = NewStateBackedMap();
         map.BeginMapExpand();
+        map.SelectFromBatch(0);
         // 玩家在 (4,4)；放在 (4,5) 為合法相鄰格
         var ok = map.TryPlaceHeldTile(4, 5);
 
@@ -67,18 +70,20 @@ public class WorldMapStateBackedFieldsTests
     }
 
     [Fact]
-    public void StateMode_CancelMapExpand_ReturnsHeldTileIdToDeckTop()
+    public void StateMode_CancelMapExpand_HeldReturnedToBatchEnd()
     {
+        // v1.12 Stage 2：Cancel 改為 held 退回 TileChoiceBatch 末尾（不還回 TileDeck）。
         var (_, state, map) = NewStateBackedMap();
-        var topId = state.TileDeck[0];
-        var deckCountBefore = state.TileDeck.Count;
         map.BeginMapExpand();
+        map.SelectFromBatch(0);
+        var heldId = state.CurrentPlayer.HeldTileId!;
+        var batchCountBefore = state.TileChoiceBatch.Count;
 
         map.CancelMapExpand();
 
         state.CurrentPlayer.HeldTileId.Should().BeNull();
-        state.TileDeck[0].Should().Be(topId);
-        state.TileDeck.Count.Should().Be(deckCountBefore);
+        state.TileChoiceBatch.Count.Should().Be(batchCountBefore + 1);
+        state.TileChoiceBatch[^1].Should().Be(heldId); // 退到末尾
     }
 
     // === P1-4 · CompanionHp dispatch ===
