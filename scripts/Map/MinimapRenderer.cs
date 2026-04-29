@@ -16,7 +16,7 @@ public partial class MinimapRenderer : Control
 {
     public const float MinimapSizePx = 100f;
     public const float CellSize = MinimapSizePx / WorldMap.Size;
-    private const float ViewportCells = 5f; // 主地圖 5×5 視野（§2.1）
+    private const float ViewportCells = 11f; // v1.13：主地圖 11×11 視野（§2.1）— 整盤一次可見
     private const float BorderWidth = 1.5f;
     private const float ViewportLineWidth = 1.5f;
     private const float PlayerDotRadius = 4f;

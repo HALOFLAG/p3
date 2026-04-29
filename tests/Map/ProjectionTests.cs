@@ -11,8 +11,8 @@ public class ProjectionTests
     [Fact]
     public void Project_FarthestRow_BackEdgeAtVanishingPoint()
     {
-        // 7×7 + 新 t 公式：最遠列 (relRow=-3) 的後緣應落在 vpY (= 視野頂端)
-        var quad = Projection.ProjectQuad(relRow: -3, relCol: 0, _p);
+        // 11×11 (v1.13)：最遠列 (relRow=-5) 的後緣應落在 vpY (= 視野頂端)
+        var quad = Projection.ProjectQuad(relRow: -5, relCol: 0, _p);
         quad.BackLeft.Y.Should().BeApproximately(_p.VanishingPointY, 0.01f);
         quad.BackRight.Y.Should().BeApproximately(_p.VanishingPointY, 0.01f);
     }
@@ -20,8 +20,8 @@ public class ProjectionTests
     [Fact]
     public void Project_NearestRow_FrontEdgeAtGround()
     {
-        // 最近列 (relRow=+3) 的前緣應落在 groundY (= 視野底端)，不會超出。
-        var quad = Projection.ProjectQuad(relRow: 3, relCol: 0, _p);
+        // 最近列 (relRow=+5) 的前緣應落在 groundY (= 視野底端)，不會超出。
+        var quad = Projection.ProjectQuad(relRow: 5, relCol: 0, _p);
         quad.FrontLeft.Y.Should().BeApproximately(_p.GroundY, 0.01f);
         quad.FrontRight.Y.Should().BeApproximately(_p.GroundY, 0.01f);
     }
@@ -52,8 +52,8 @@ public class ProjectionTests
     [Fact]
     public void Project_FarthestRowScale_AtCenter()
     {
-        // 中心 t = 0.0714，scale = FarScale × (1/FarScale)^0.0714 ≈ FarScale × 1.044
-        var farTile = Projection.Project(relRow: -3, relCol: 0, _p);
+        // 11×11：最遠列 relRow=-5，中心 t = 0.5/11 ≈ 0.0455
+        var farTile = Projection.Project(relRow: -5, relCol: 0, _p);
         var expectedScale = GeometricScale(0.5f / _p.VisibleRows);
         farTile.Scale.Should().BeApproximately(expectedScale, 0.001f);
         farTile.Width.Should().BeApproximately(_p.BaseTileSize * expectedScale, 0.01f);
@@ -62,7 +62,7 @@ public class ProjectionTests
     [Fact]
     public void Project_NearestRowScale_AtCenter()
     {
-        var nearTile = Projection.Project(relRow: 3, relCol: 0, _p);
+        var nearTile = Projection.Project(relRow: 5, relCol: 0, _p);
         var expectedScale = GeometricScale(1f - 0.5f / _p.VisibleRows);
         nearTile.Scale.Should().BeApproximately(expectedScale, 0.001f);
     }
@@ -72,8 +72,8 @@ public class ProjectionTests
     {
         // 幾何尺度的關鍵性質：同欄列在螢幕上的中心點呈直線（dxCenter/dyCenter 為常數）
         // 紅線示意的「前後直線」效果
-        var rows = new[] { -3, -2, -1, 0, 1, 2, 3 };
-        var entries = rows.Select(r => Projection.Project(r, relCol: -3, _p)).ToArray();
+        var rows = new[] { -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5 };
+        var entries = rows.Select(r => Projection.Project(r, relCol: -5, _p)).ToArray();
         var centers = entries.Select(e => (X: e.X + e.Width * 0.5f, Y: e.Y + e.Height * 0.5f)).ToArray();
 
         // 任意三點應共線：取頭尾兩點為基準線，檢查中間每點偏離度 < 容忍值
@@ -94,17 +94,17 @@ public class ProjectionTests
     }
 
     [Theory]
+    [InlineData(-5)]
     [InlineData(-3)]
-    [InlineData(-2)]
     [InlineData(-1)]
     [InlineData(0)]
     [InlineData(1)]
-    [InlineData(2)]
     [InlineData(3)]
+    [InlineData(5)]
     public void Project_MirrorColumns_SameYButOppositeXOffset(int relRow)
     {
-        var leftTile = Projection.Project(relRow, relCol: -3, _p);
-        var rightTile = Projection.Project(relRow, relCol: 3, _p);
+        var leftTile = Projection.Project(relRow, relCol: -5, _p);
+        var rightTile = Projection.Project(relRow, relCol: 5, _p);
 
         leftTile.Y.Should().Be(rightTile.Y);
         leftTile.Width.Should().Be(rightTile.Width);
@@ -120,7 +120,7 @@ public class ProjectionTests
     public void Project_IntegratedScaleY_DeltasIncreaseWithDepth()
     {
         // 整合尺度 Y：遠列 Δy 小、近列 Δy 大（與該列寬度同步），但變化線性而非二次
-        var rows = new[] { -3, -2, -1, 0, 1, 2, 3 };
+        var rows = new[] { -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5 };
         var entries = rows.Select(r => Projection.Project(r, 0, _p)).ToArray();
         var centers = entries.Select(e => e.Y + e.Height * 0.5f).ToArray();
 
@@ -135,21 +135,21 @@ public class ProjectionTests
     }
 
     [Fact]
-    public void IsVisible_WithinSevenBySevenRange_ReturnsTrue()
+    public void IsVisible_WithinElevenByElevenRange_ReturnsTrue()
     {
-        for (int r = -3; r <= 3; r++)
-        for (int c = -3; c <= 3; c++)
+        for (int r = -5; r <= 5; r++)
+        for (int c = -5; c <= 5; c++)
         {
             Projection.IsVisible(r, c, _p).Should().BeTrue($"({r},{c}) should be visible");
         }
     }
 
     [Theory]
-    [InlineData(-4, 0)]
-    [InlineData(4, 0)]
-    [InlineData(0, -4)]
-    [InlineData(0, 4)]
-    public void IsVisible_OutsideSevenBySeven_ReturnsFalse(int relRow, int relCol)
+    [InlineData(-6, 0)]
+    [InlineData(6, 0)]
+    [InlineData(0, -6)]
+    [InlineData(0, 6)]
+    public void IsVisible_OutsideElevenByEleven_ReturnsFalse(int relRow, int relCol)
     {
         Projection.IsVisible(relRow, relCol, _p).Should().BeFalse();
     }
@@ -186,8 +186,8 @@ public class ProjectionTests
     [Fact]
     public void ProjectQuad_AllTilesFitWithinViewport()
     {
-        // 新 t 公式保證所有列前後緣都在 [vpY, groundY] 範圍內，不超出畫面
-        for (int r = -3; r <= 3; r++)
+        // 新 t 公式保證所有列前後緣都在 [vpY, groundY] 範圍內，不超出畫面（11×11）
+        for (int r = -5; r <= 5; r++)
         {
             var quad = Projection.ProjectQuad(r, 0, _p);
             quad.BackLeft.Y.Should().BeGreaterThanOrEqualTo(_p.VanishingPointY - 0.01f,
@@ -198,21 +198,23 @@ public class ProjectionTests
     }
 
     [Theory]
+    [InlineData(-5)]
     [InlineData(-3)]
-    [InlineData(-2)]
     [InlineData(-1)]
     [InlineData(0)]
     [InlineData(1)]
-    [InlineData(2)]
     [InlineData(3)]
-    public void ProjectQuad_AllRows_OneToOneAspectRatio(int relRow)
+    [InlineData(5)]
+    public void ProjectQuad_AllRows_ConsistentAspectRatio(int relRow)
     {
-        // 整合尺度 Y → 每列 Δy ∝ scale，與該列寬度同步 → 所有列都呈 ~1:1（不只 player row）
+        // v1.13 11×11：1:1 不再成立（BaseTileSize 70 未重調，11 rows 在 ViewHeight 380 內擠較多 → 高度變窄）。
+        // 整合尺度仍保證所有列「同寬高比」（uniform 拉伸），只是不是 1.0。當前比值 ~1.526。
+        // 後續若把 BaseTileSize 調回 ~46 可恢復 1:1；本任務刻意不調 size。
         var quad = Projection.ProjectQuad(relRow, 0, _p);
         var width = (quad.BackRight.X - quad.BackLeft.X + quad.FrontRight.X - quad.FrontLeft.X) * 0.5f;
         var height = quad.FrontLeft.Y - quad.BackLeft.Y;
         var ratio = width / height;
-        ratio.Should().BeInRange(0.95f, 1.05f,
+        ratio.Should().BeInRange(1.45f, 1.60f,
             $"row {relRow}: width={width:F2}, height={height:F2}, ratio={ratio:F3}");
     }
 
@@ -220,8 +222,8 @@ public class ProjectionTests
     public void ProjectQuad_FarRowNarrowerThanNearRow()
     {
         // 強透視確認：最遠列的寬度應顯著小於最近列（~ FarScale 的比例）
-        var farQuad = Projection.ProjectQuad(relRow: -3, relCol: 0, _p);
-        var nearQuad = Projection.ProjectQuad(relRow: 3, relCol: 0, _p);
+        var farQuad = Projection.ProjectQuad(relRow: -5, relCol: 0, _p);
+        var nearQuad = Projection.ProjectQuad(relRow: 5, relCol: 0, _p);
 
         var farWidth = farQuad.BackRight.X - farQuad.BackLeft.X;  // 最遠後緣（最窄處）
         var nearWidth = nearQuad.FrontRight.X - nearQuad.FrontLeft.X; // 最近前緣（最寬處）

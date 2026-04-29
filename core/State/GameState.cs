@@ -59,6 +59,13 @@ public sealed class PlayerState
     /// </summary>
     public string? HeldTileId { get; set; }
 
+    /// <summary>
+    /// v1.12 Stage 5 — 持有的 tile 在 TileChoiceBatch 內被選取時的原始 idx。
+    /// CancelMapExpand 時用此 idx 把 held 插回原格（Insert at idx，避免推到末尾）；
+    /// 每次 SelectFromBatch（含 re-select）都會更新為當下選取 idx。
+    /// </summary>
+    public int? HeldOriginalBatchIdx { get; set; }
+
     public Dictionary<EquipmentSlot, string?> Equipment { get; } = new();
     public EquipmentSlot CharacterCardSlot { get; set; } = EquipmentSlot.Head;
     /// <summary>
@@ -153,6 +160,13 @@ public sealed class PlacedTile
     public bool ActionCardProgressUsedThisVisit { get; set; }
     public Dictionary<int, HashSet<string>> ResourcesCollectedByPlayer { get; } = new();
     public int LastVisitBigRound { get; set; }
+
+    /// <summary>
+    /// v1.12 Stage 6 — 地塊組流水號。同一張組合卡的 N 個 cell 共享相同 id；
+    /// null = 單格 tile（GroupCount=1）或自由 copies 拼接（如 grand-hallway 在 Stage 5 之前的 2 copies）。
+    /// 用途：Stage 7 區塊外框（TileGroupOutlineLayer）按 GroupInstanceId 分組畫金邊。
+    /// </summary>
+    public int? GroupInstanceId { get; set; }
 }
 
 public sealed class GameState
@@ -185,6 +199,33 @@ public sealed class GameState
     /// CancelMapExpand 把 held 退回 List 末尾。Mode=Idle 時批次仍持留，下次 BeginMapExpand 沿用。
     /// </summary>
     public List<string> TileChoiceBatch { get; } = new();
+
+    /// <summary>
+    /// v1.12 Stage 3 — 模組作者預先定義的批次序列（從 prologue.tileBatches 載入）。
+    /// BeginMapExpand 取 PendingTileBatches[0] 灌進 TileChoiceBatch（並 RemoveAt(0)）；
+    /// 序列耗盡後 fallback 到 TileDeck 機械抽 3。模組未定義 tileBatches 時此 List 永遠空。
+    /// </summary>
+    public List<List<string>> PendingTileBatches { get; } = new();
+
+    // === v1.12 Stage 6 — 地塊組連續放置進度 ===
+
+    /// <summary>當前進行中的地塊組 tile id（與 HeldTileId 相同；缺則無組進行中）。</summary>
+    public string? PendingGroupTileId { get; set; }
+
+    /// <summary>當前進行中地塊組剩餘需放置的 cell 數（含尚未放的當前 held）。Count==0 表示無組進行中。</summary>
+    public int PendingGroupRemaining { get; set; }
+
+    /// <summary>已放置的同組 cell 座標（X=col, Y=row 對齊 TileMap key）；CancelMapExpand 時用此 list rollback。</summary>
+    public List<(int X, int Y)> PendingGroupCells { get; } = new();
+
+    /// <summary>當前組的 GroupInstanceId（共享給所有同組 cell）；組完成或 cancel 後清為 null。</summary>
+    public int? PendingGroupInstanceId { get; set; }
+
+    /// <summary>GroupInstanceId 流水號計數器，AllocateGroupInstanceId 取後 +1。</summary>
+    private int _nextGroupInstanceId = 1;
+
+    /// <summary>v1.12 Stage 6 — 取下一個 GroupInstanceId（呼叫一次後計數器 +1）。</summary>
+    public int AllocateGroupInstanceId() => _nextGroupInstanceId++;
     public bool UsedFamiliarFreeMoveThisTurn { get; set; }
     /// <summary>Set once <see cref="Services.TurnLoop.TriggerStartingTileEntry"/> has applied
     /// the starting tile's OnEnter effects and tileEnter event. Guards against double-application.</summary>
@@ -252,7 +293,7 @@ public sealed class GameState
         };
 
         // Stage 0：起始座標。null = 預設 (0,0) 維持 M-series 既有測試行為；
-        // runtime（任務 11 起）一律帶 (4,4) 對齊 Phase 1+2 的 9×9 中心。
+        // runtime（v1.13 起）一律帶 (5,5) 對齊 11×11 中心；前 v1.12 為 (4,4) / 9×9。
         var startPos = startPosition ?? new Position(0, 0);
         if (gridSize.HasValue && !state.IsInBounds(startPos))
             throw new ArgumentException(
@@ -307,15 +348,28 @@ public sealed class GameState
         state.TileMap[(startPos.X, startPos.Y)] = new PlacedTile { TileId = startId, Level = ExplorationLevel.Unfamiliar };
         foreach (var p in state.Players) p.Position = startPos;
 
-        // Tile deck. Fixed order from module definition; tiles with Copies > 1
-        // are seeded consecutively so subsequent copies draw back-to-back.
-        // The starting tile already occupies startPos, so only its remaining copies
-        // (if any) go into the deck.
-        foreach (var (id, tile) in module.Tiles)
+        // v1.12 Stage 3 — 模組作者定義 tileBatches 時：拷貝為 state.PendingTileBatches，
+        // 並跳過 TileDeck 機械填充（批次為唯一來源，避免 deck 與批次重複抽到同一張）。
+        // 缺欄位 / 空陣列：fallback 到既有 TileDeck（每 tile.Copies 灌入，扣掉起始 tile 的 1 份）。
+        if (module.Prologue.TileBatches.Count > 0)
         {
-            int copies = Math.Max(1, tile.Copies);
-            int deckCopies = id == startId ? copies - 1 : copies;
-            for (int i = 0; i < deckCopies; i++) state.TileDeck.Add(id);
+            foreach (var batch in module.Prologue.TileBatches)
+            {
+                state.PendingTileBatches.Add(new List<string>(batch));
+            }
+        }
+        else
+        {
+            // Tile deck. Fixed order from module definition; tiles with Copies > 1
+            // are seeded consecutively so subsequent copies draw back-to-back.
+            // The starting tile already occupies startPos, so only its remaining copies
+            // (if any) go into the deck.
+            foreach (var (id, tile) in module.Tiles)
+            {
+                int copies = Math.Max(1, tile.Copies);
+                int deckCopies = id == startId ? copies - 1 : copies;
+                for (int i = 0; i < deckCopies; i++) state.TileDeck.Add(id);
+            }
         }
 
         return state;

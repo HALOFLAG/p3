@@ -27,6 +27,17 @@
         "default": 1,
         "description": "Number of deck copies. copies>1 seeds the same tile id consecutively in the deck and forces subsequent copies to be placed orthogonally adjacent to a previously-placed copy (forms a 2x1 / 3x1 corridor)."
       },
+      "groupCount": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9,
+        "default": 1,
+        "description": "v1.12 Stage 6 — 地塊組連續放置。1=單格 tile（既有行為）；>1=同張卡 N 個 1×1 cell，玩家強制連續放完。"
+      },
+      "groupShape": {
+        "type": "string",
+        "description": "v1.12 Stage 7 — 地塊組形狀模板。null/缺欄位=自由連通；'rectangle:WxH'/'line:N' 起 Stage 7 強制依形狀限定下一格位置。"
+      },
       "resources": {
         "type": "array",
         "items": {

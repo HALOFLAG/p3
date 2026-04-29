@@ -42,6 +42,12 @@ public partial class TileVisual : Node2D
     // 最後一次 SetTileQuad 的 4 角（local 座標，TileVisual 中心為原點）
     private Vector2 _backLeft, _backRight, _frontRight, _frontLeft;
 
+    /// <summary>v1.12 Stage 7 — 4 角全域座標（含 TileVisual.Position）給 TileGroupOutlineLayer 自繪外框用。</summary>
+    public Vector2 BackLeftGlobal => Position + _backLeft;
+    public Vector2 BackRightGlobal => Position + _backRight;
+    public Vector2 FrontRightGlobal => Position + _frontRight;
+    public Vector2 FrontLeftGlobal => Position + _frontLeft;
+
     public int Row { get; set; }
     public int Col { get; set; }
 

@@ -80,6 +80,16 @@
       "items": { "type": "string" },
       "minItems": 0,
       "maxItems": 4
+    },
+    "tileBatches": {
+      "description": "Phase 3 v1.12 Stage 3：自訂「3 張選 1」批次抽牌節奏。每組 1-3 張 tile id（重複表 copies）。空陣列 / 缺欄位 fallback 到既有 TileDeck 機械抽 3。",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 3
+      }
     }
   },
   "$defs": {

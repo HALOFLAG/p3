@@ -71,7 +71,7 @@ public class TileTransformRegistryTests
         var state = GameState.CreateNew(
             module, new[] { heroId },
             module.Prologue.StartingCompanionIds, seed: 1234,
-            gridSize: 9, startPosition: new Position(4, 4));
+            gridSize: 11, startPosition: new Position(5, 5));
 
         // 在地圖上放 2 張 village-store + 1 張 forest-path（後者不該被影響）
         state.TileMap[(3, 4)] = new PlacedTile { TileId = "village-store", Level = ExplorationLevel.Familiar };
@@ -101,7 +101,7 @@ public class TileTransformRegistryTests
         var state = GameState.CreateNew(
             module, new[] { module.Characters.Keys.First() },
             module.Prologue.StartingCompanionIds, seed: 1234,
-            gridSize: 9, startPosition: new Position(4, 4));
+            gridSize: 11, startPosition: new Position(5, 5));
 
         state.TileMap[(3, 4)] = new PlacedTile { TileId = "village-store", Level = ExplorationLevel.Unfamiliar };
         var changes = MapService.TryTransformTilesForEvent(state, module, registry, "nonexistent", null);
@@ -117,7 +117,7 @@ public class TileTransformRegistryTests
         var state = GameState.CreateNew(
             module, new[] { module.Characters.Keys.First() },
             module.Prologue.StartingCompanionIds, seed: 1234,
-            gridSize: 9, startPosition: new Position(4, 4));
+            gridSize: 11, startPosition: new Position(5, 5));
         // 只起始格 village-square，未放 village-store
 
         var changes = MapService.TryTransformTilesForEvent(state, module, registry, "village-inquiry", null);

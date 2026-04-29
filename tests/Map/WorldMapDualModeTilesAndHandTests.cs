@@ -34,8 +34,8 @@ public class WorldMapDualModeTilesAndHandTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
     }
@@ -46,11 +46,11 @@ public class WorldMapDualModeTilesAndHandTests
     public void StateMode_GetTile_AtStartingPos_ReturnsResolvedTileExplored()
     {
         var (module, state, map) = NewStateBackedMap();
-        // 起始 tile = village-square (terrain=town, visualProfile.terrain=Building)
-        var tile = map.GetTile(4, 4);
+        // 起始 tile = village-square (terrain=town, visualProfile.terrain=Building)；v1.13 中心 (5,5)
+        var tile = map.GetTile(5, 5);
         tile.IsPlaced.Should().BeTrue();
-        tile.Row.Should().Be(4);
-        tile.Col.Should().Be(4);
+        tile.Row.Should().Be(5);
+        tile.Col.Should().Be(5);
         tile.Terrain.Should().Be(MapTerrain.Building);
         // Stage 3.6 修復：CreateNew 預設 Level=Unfamiliar；
         // IsExplored 門檻改為 >= Unfamiliar（語意：placed-and-entered = 已知）→ 起始格 IsExplored=true
@@ -71,9 +71,9 @@ public class WorldMapDualModeTilesAndHandTests
     public void StateMode_GetTile_FamiliarLevel_IsExplored()
     {
         var (_, state, map) = NewStateBackedMap();
-        // 把起始格升到 Familiar
-        state.TileMap[(4, 4)].Level = ExplorationLevel.Familiar;
-        var tile = map.GetTile(4, 4);
+        // 把起始格升到 Familiar（v1.13 中心 (5,5)）
+        state.TileMap[(5, 5)].Level = ExplorationLevel.Familiar;
+        var tile = map.GetTile(5, 5);
         tile.IsExplored.Should().BeTrue();
     }
 
@@ -153,8 +153,8 @@ public class WorldMapDualModeTilesAndHandTests
     public void StandaloneMode_GetTile_UsesInternalTiles()
     {
         var map = new WorldMap(new NoSubstituteRandom());
-        // standalone 預設 (4,4) 是 Building 已放置
-        var tile = map.GetTile(4, 4);
+        // standalone 預設 (5,5)（v1.13 中心）是 Building 已放置
+        var tile = map.GetTile(WorldMap.InitialPlayerRow, WorldMap.InitialPlayerCol);
         tile.IsPlaced.Should().BeTrue();
         tile.Terrain.Should().Be(MapTerrain.Building);
     }

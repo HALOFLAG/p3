@@ -32,8 +32,8 @@ public class WorldMapEquipmentDispatchTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
     }

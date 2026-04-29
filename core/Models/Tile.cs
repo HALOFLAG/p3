@@ -51,4 +51,18 @@ public sealed record Tile(
     /// 缺欄位 = 該 tile 對外部事件無 transform 規則。
     /// </summary>
     public IReadOnlyList<TileTransformRule> Transformations { get; init; } = Array.Empty<TileTransformRule>();
+
+    /// <summary>
+    /// v1.12 Stage 6 — 「地塊組」連續放置：1 張卡 = N 個 1×1 cell，玩家強制連續放完 N 格。
+    /// 預設 1（單格 tile，行為與既有相同）。Stage 6 階段純 N-cell 連通邏輯；
+    /// Stage 7 起搭配 <see cref="GroupShape"/> 強制矩形/直線拓撲。
+    /// </summary>
+    public int GroupCount { get; init; } = 1;
+
+    /// <summary>
+    /// v1.12 Stage 6/7 — 群組形狀模板（如 "rectangle:2x2"、"line:2"）。
+    /// null 或空字串 = 自由連通（任何相鄰已放同組格皆可）；
+    /// 已設定 = Stage 7 起強制依形狀限定下一格位置。
+    /// </summary>
+    public string? GroupShape { get; init; }
 }

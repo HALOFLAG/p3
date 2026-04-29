@@ -29,7 +29,7 @@ public partial class MainBootstrap : Control
     private OrbitPanel? _orbitPanel;
     private EventResolutionDialog? _eventDialog;
     private CardNarrative.Core.Models.Module? _module;
-    // Task 11 Stage 1：runtime GameState（gridSize=9, startPosition=(4,4)）；
+    // Task 11 Stage 1：runtime GameState（v1.13 起 gridSize=11, startPosition=(5,5)；前 v1.12 為 9/(4,4)）；
     // Stage 1 僅儲存參照供 Stage 2 façade 使用，本 stage WorldMap 仍是 authoritative。
     private CardNarrative.Core.State.GameState? _gameState;
     // Task 11 Stage 5：tile-side transformations 索引（事件 trigger 後 O(R) 查找）
@@ -162,6 +162,11 @@ public partial class MainBootstrap : Control
         {
             mainMap.DeckStatusChanged += rightPanel.OnDeckStatusChanged;
             mainMap.LogAppended += rightPanel.OnLogAppended;
+            // v1.12 Stage 5 — RightPanel batch slot click → 呼 WorldMap.SelectFromBatch
+            rightPanel.BatchSlotClicked += slotIdx => mainMap.RequestSelectFromBatch(slotIdx);
+            // 進 MapExpand → slot clickable；其他模式 → 不可點
+            mainMap.ModeChangedExt += modeLabel =>
+                rightPanel.SetBatchClickable(modeLabel == "放置地塊");
             // Task 9：把 Core EventOrbit 注入到 RightPanel 內建的 OrbitPanel
             _orbitPanel = rightPanel.OrbitPanel;
             _orbitPanel?.SetOrbit(_orbit!);
@@ -260,7 +265,7 @@ public partial class MainBootstrap : Control
 
     /// <summary>
     /// Task 11 Stage 1：載入 abandoned-mansion 模組 + 建 GameState（runtime 唯一一次）。
-    /// gridSize=9 + startPosition=(4,4) 對齊 Phase 1+2 的 9×9 中心起點；
+    /// v1.13：gridSize=11 + startPosition=(5,5) 對齊 11×11 中心起點（前 v1.12 為 9 / (4,4)）；
     /// 起始同伴讀 prologue.startingCompanionIds（fallback：old-priest + hired-bodyguard）。
     /// </summary>
     private void LoadModuleAndCreateGameState()
@@ -297,8 +302,8 @@ public partial class MainBootstrap : Control
                 chosenCharacterIds: new[] { heroId },
                 chosenCompanionIds: companionIds,
                 seed: 1234, // demo deterministic seed
-                gridSize: 9,
-                startPosition: new CardNarrative.Core.State.Position(4, 4));
+                gridSize: 11,
+                startPosition: new CardNarrative.Core.State.Position(5, 5));
 
             GD.Print($"[MainBootstrap] GameState 建立：起始 ({_gameState.CurrentPlayer.Position.X},{_gameState.CurrentPlayer.Position.Y})、"
                      + $"主角 {heroId}、同伴 [{string.Join(", ", companionIds)}]");

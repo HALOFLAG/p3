@@ -36,10 +36,22 @@ public class WorldMapDualModeMutationTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
+        // v1.12 Stage 6 後：abandoned-mansion 已含 prologue.tileBatches 導致 TileDeck 為空。
+        // 本檔測試多以 TileDeck 為核心驗證 dispatch；攤平 PendingTileBatches → TileDeck 還原 deck-driven 行為。
+        DrainBatchesToDeck(state);
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
+    }
+
+    /// <summary>把 PendingTileBatches 攤平回 TileDeck，等價於「無 tileBatches」模組。</summary>
+    private static void DrainBatchesToDeck(GameState state)
+    {
+        foreach (var batch in state.PendingTileBatches)
+            foreach (var id in batch)
+                state.TileDeck.Add(id);
+        state.PendingTileBatches.Clear();
     }
 
     // === Hand / Deck dispatch ===
@@ -124,37 +136,34 @@ public class WorldMapDualModeMutationTests
         map.BeginMapExpand();
         map.SelectFromBatch(0);
 
-        // 起點 (4,4) 的鄰居 (3,4) — 但 visualProfile 未必通過 tag rule
-        // 這裡只測 state.TileMap 寫入，不挑 tile id；用 (4,5) 直接放
-        // IsLegalPlacement 內 HasPlacedNeighbor 用 GetTile dispatch，state-mode 看到 (4,4) 已放
-        map.TryPlaceHeldTile(4, 5).Should().BeTrue();
+        // v1.13：起點 (5,5) 的右側鄰格 (5,6)
+        map.TryPlaceHeldTile(5, 6).Should().BeTrue();
 
-        state.TileMap.Should().ContainKey((5, 4)); // (col=5, row=4)
-        state.TileMap[(5, 4)].TileId.Should().Be(topId);
-        state.TileMap[(5, 4)].Level.Should().Be(ExplorationLevel.Unknown);
+        state.TileMap.Should().ContainKey((6, 5)); // (col=6, row=5)
+        state.TileMap[(6, 5)].TileId.Should().Be(topId);
+        state.TileMap[(6, 5)].Level.Should().Be(ExplorationLevel.Unknown);
         map.Mode.Should().Be(InteractionMode.Idle);
         map.HeldTile.Should().BeNull();
     }
 
     [Fact]
-    public void StateMode_CancelMapExpand_ReturnsHeldToBatchEnd()
+    public void StateMode_CancelMapExpand_ReturnsHeldToOriginalSlot()
     {
-        // v1.12 Stage 2：Cancel 改為 held 退批次末尾；批次本身保留供下次 Begin 沿用，不還回 TileDeck。
+        // v1.12 Stage 5：Cancel 改為 held 插回 visual slot（HeldOriginalBatchIdx）；批次保留、TileDeck 不還。
         var (_, state, map) = NewStateBackedMap();
         var initialDeckCount = state.TileDeck.Count;
         map.BeginMapExpand();
-        map.SelectFromBatch(0); // 從批次選 1 張
+        map.SelectFromBatch(2); // origIdx=2
         var heldId = state.CurrentPlayer.HeldTileId!;
-        // batch 剩 2 張，TileDeck 少了 3 張
         state.TileChoiceBatch.Count.Should().Be(2);
         state.TileDeck.Count.Should().Be(initialDeckCount - 3);
 
         map.CancelMapExpand();
 
-        // held 退到批次末尾，批次回到 3 張，TileDeck 維持 -3
         state.CurrentPlayer.HeldTileId.Should().BeNull();
+        state.CurrentPlayer.HeldOriginalBatchIdx.Should().BeNull();
         state.TileChoiceBatch.Count.Should().Be(3);
-        state.TileChoiceBatch[^1].Should().Be(heldId);
+        state.TileChoiceBatch[2].Should().Be(heldId);
         state.TileDeck.Count.Should().Be(initialDeckCount - 3);
         map.Mode.Should().Be(InteractionMode.Idle);
         map.HeldTile.Should().BeNull();
@@ -164,28 +173,27 @@ public class WorldMapDualModeMutationTests
     public void StateMode_TryMovePlayerTo_UpgradesTileLevelToFamiliar()
     {
         var (module, state, map) = NewStateBackedMap();
-        // 在 (3,4) 加一格供移動目標
+        // v1.13 起點 (5,5) 的左側鄰格 (5,4) — Row=5 Col=4 → state(X=4, Y=5)
         var anyTileId = module.Tiles.Keys.First();
-        state.TileMap[(4, 3)] = new PlacedTile { TileId = anyTileId, Level = ExplorationLevel.Unfamiliar };
+        state.TileMap[(4, 5)] = new PlacedTile { TileId = anyTileId, Level = ExplorationLevel.Unfamiliar };
 
-        // BeginMoveMode → TryMovePlayerTo (3,4) — Row=3 Col=4 → state(X=4, Y=3)
         map.BeginMoveMode();
-        var result = map.TryMovePlayerTo(3, 4);
+        var result = map.TryMovePlayerTo(5, 4);
 
         result.Should().Be(MovePlayerResult.Ok);
-        state.CurrentPlayer.Position.Should().Be(new Position(4, 3));
-        state.TileMap[(4, 3)].Level.Should().Be(ExplorationLevel.Familiar);
+        state.CurrentPlayer.Position.Should().Be(new Position(4, 5));
+        state.TileMap[(4, 5)].Level.Should().Be(ExplorationLevel.Familiar);
     }
 
     [Fact]
     public void StateMode_IsLegalPlacement_UsesGetTileDispatch()
     {
         var (_, state, map) = NewStateBackedMap();
-        // 起點 (4,4) 已放 — 鄰居 (3,4)/(4,3)/(5,4)/(4,5) 應 legal
-        map.IsLegalPlacement(3, 4).Should().BeTrue();
+        // v1.13：起點 (5,5) 已放 — 鄰居 (4,5)/(5,4)/(6,5)/(5,6) 應 legal
         map.IsLegalPlacement(4, 5).Should().BeTrue();
-        // (4,4) 已放 — 不能再放
-        map.IsLegalPlacement(4, 4).Should().BeFalse();
+        map.IsLegalPlacement(5, 6).Should().BeTrue();
+        // (5,5) 已放 — 不能再放
+        map.IsLegalPlacement(5, 5).Should().BeFalse();
         // (0,0) 不是鄰居 → 不能放
         map.IsLegalPlacement(0, 0).Should().BeFalse();
     }

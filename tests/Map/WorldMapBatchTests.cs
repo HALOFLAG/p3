@@ -28,16 +28,29 @@ public class WorldMapBatchTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
+    }
+
+    /// <summary>
+    /// v1.12 Stage 6 後：abandoned-mansion 已含 prologue.tileBatches，CreateNew 會把 TileDeck 留空。
+    /// 需要「無 tileBatches」既有 3 卡 deck 抽法的測試 → 呼叫此 helper 把 PendingTileBatches 攤平回 TileDeck。
+    /// </summary>
+    private static void DrainBatchesToDeck(GameState state)
+    {
+        foreach (var batch in state.PendingTileBatches)
+            foreach (var id in batch)
+                state.TileDeck.Add(id);
+        state.PendingTileBatches.Clear();
     }
 
     [Fact]
     public void BeginMapExpand_EmptyBatch_DrawsUpToThreeFromDeck()
     {
         var (_, state, map) = NewStateBackedMap();
+        DrainBatchesToDeck(state); // 排空 PendingTileBatches → 走 TileDeck fallback 路徑
         var deckCountBefore = state.TileDeck.Count;
         deckCountBefore.Should().BeGreaterThan(2);
         state.TileChoiceBatch.Should().BeEmpty();
@@ -53,6 +66,7 @@ public class WorldMapBatchTests
     public void BeginMapExpand_DeckHasOneTile_FillsBatchWithOne()
     {
         var (_, state, map) = NewStateBackedMap();
+        DrainBatchesToDeck(state); // 排空 PendingTileBatches，避免 BeginMapExpand 走 batch 路徑
         // 把 TileDeck 收縮成只剩 1 張
         var only = state.TileDeck[0];
         state.TileDeck.Clear();
@@ -100,39 +114,60 @@ public class WorldMapBatchTests
     [Fact]
     public void SelectFromBatch_ReSelect_SwapsHeldAndBatch()
     {
+        // v1.12 Stage 5：SelectFromBatch 改吃「視覺 slot idx」(0-2)；
+        // 虛擬 slot 投影 — 持有時 slot[origIdx]=held，其他 slot 對應 batch（右移跳過 held 占的格）。
         var (_, state, map) = NewStateBackedMap();
+        DrainBatchesToDeck(state); // 走 deck fallback 確保有 3 張可抽
         map.BeginMapExpand();
         var firstPick = state.TileChoiceBatch[0];
-        var secondPickIdx = 1;
-        var secondPickId = state.TileChoiceBatch[secondPickIdx];
+        var secondPick = state.TileChoiceBatch[1];
 
-        map.SelectFromBatch(0); // 先選 idx=0 → held=firstPick，批次剩 2 張（原 idx=1 現在是 idx=0、原 idx=2 現在是 idx=1）
+        // 先點視覺 slot 0 (firstPick) → held=firstPick，batch=[secondPick, third]，origIdx=0
+        map.SelectFromBatch(0);
         state.CurrentPlayer.HeldTileId.Should().Be(firstPick);
-        state.TileChoiceBatch[0].Should().Be(secondPickId);
+        state.CurrentPlayer.HeldOriginalBatchIdx.Should().Be(0);
 
-        // re-select 改選原 secondPick（批次中現在的 idx=0）
-        map.SelectFromBatch(0).Should().BeTrue();
+        // 虛擬 slot 1 顯示 batch[0] = secondPick；點視覺 slot 1 → re-select swap
+        map.SelectFromBatch(1).Should().BeTrue();
 
-        state.CurrentPlayer.HeldTileId.Should().Be(secondPickId);
-        // firstPick 應換回到原批次的 idx=0 位置
+        state.CurrentPlayer.HeldTileId.Should().Be(secondPick);
+        state.CurrentPlayer.HeldOriginalBatchIdx.Should().Be(1);
         state.TileChoiceBatch[0].Should().Be(firstPick);
-        state.TileChoiceBatch.Count.Should().Be(2); // 批次長度不變
+        state.TileChoiceBatch.Count.Should().Be(2);
     }
 
     [Fact]
-    public void CancelMapExpand_HeldReturnedToBatchEnd()
+    public void SelectFromBatch_SameSlotTwice_IsNoop()
     {
+        // v1.12 Stage 5：點到 held 自己的視覺 slot → no-op（不改變狀態）
         var (_, state, map) = NewStateBackedMap();
         map.BeginMapExpand();
-        map.SelectFromBatch(0);
+        map.SelectFromBatch(1);
+        var heldBefore = state.CurrentPlayer.HeldTileId;
+        var batchBefore = state.TileChoiceBatch.ToList();
+
+        map.SelectFromBatch(1).Should().BeFalse();
+
+        state.CurrentPlayer.HeldTileId.Should().Be(heldBefore);
+        state.TileChoiceBatch.Should().Equal(batchBefore);
+    }
+
+    [Fact]
+    public void CancelMapExpand_HeldReturnedToOriginalSlot()
+    {
+        // v1.12 Stage 5：Cancel 把 held 插回原 visual slot（不再退末尾）。
+        var (_, state, map) = NewStateBackedMap();
+        map.BeginMapExpand();
+        map.SelectFromBatch(1); // origIdx=1
         var heldId = state.CurrentPlayer.HeldTileId!;
         var batchSizeBefore = state.TileChoiceBatch.Count;
 
         map.CancelMapExpand();
 
         state.CurrentPlayer.HeldTileId.Should().BeNull();
+        state.CurrentPlayer.HeldOriginalBatchIdx.Should().BeNull();
         state.TileChoiceBatch.Count.Should().Be(batchSizeBefore + 1);
-        state.TileChoiceBatch[^1].Should().Be(heldId); // 退到末尾
+        state.TileChoiceBatch[1].Should().Be(heldId);
         map.Mode.Should().Be(InteractionMode.Idle);
     }
 }

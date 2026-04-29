@@ -38,7 +38,7 @@ public class L3_07_TileTransformThreeViewSyncTests
         var state = GameState.CreateNew(
             module, new[] { heroId },
             module.Prologue.StartingCompanionIds, seed: 1234,
-            gridSize: 9, startPosition: new Position(4, 4));
+            gridSize: 11, startPosition: new Position(5, 5));
         var worldMap = new WorldMap(state, module, new NoSubstituteRandom());
         var registry = TileTransformRegistry.Build(module);
 
@@ -116,7 +116,7 @@ public class L3_07_TileTransformThreeViewSyncTests
         var state = GameState.CreateNew(
             module, new[] { module.Characters.Keys.First() },
             module.Prologue.StartingCompanionIds, seed: 1234,
-            gridSize: 9, startPosition: new Position(4, 4));
+            gridSize: 11, startPosition: new Position(5, 5));
         var worldMap = new WorldMap(state, module, new NoSubstituteRandom());
         var registry = TileTransformRegistry.Build(module);
 
@@ -142,14 +142,14 @@ public class L3_07_TileTransformThreeViewSyncTests
         var state = GameState.CreateNew(
             module, new[] { module.Characters.Keys.First() },
             module.Prologue.StartingCompanionIds, seed: 1234,
-            gridSize: 9, startPosition: new Position(4, 4));
+            gridSize: 11, startPosition: new Position(5, 5));
         var worldMap = new WorldMap(state, module, new NoSubstituteRandom());
         var registry = TileTransformRegistry.Build(module);
 
-        // 直接把起始格替換成 village-store（測試用 fixture）
-        state.TileMap[(4, 4)].TileId = "village-store";
-        state.TileMap[(4, 4)].Level = ExplorationLevel.Familiar;
-        worldMap.GetTile(4, 4).Terrain.Should().Be(MapTerrain.Building);
+        // 直接把起始格 (v1.13 中心 5,5) 替換成 village-store（測試用 fixture）
+        state.TileMap[(5, 5)].TileId = "village-store";
+        state.TileMap[(5, 5)].Level = ExplorationLevel.Familiar;
+        worldMap.GetTile(5, 5).Terrain.Should().Be(MapTerrain.Building);
 
         var changes = MapService.TryTransformTilesForEvent(
             state, module, registry, "village-inquiry",
@@ -157,7 +157,7 @@ public class L3_07_TileTransformThreeViewSyncTests
 
         changes.Should().HaveCount(1);
         // GetTile 反映新 TileId → Forest
-        worldMap.GetTile(4, 4).Terrain.Should().Be(MapTerrain.Forest);
+        worldMap.GetTile(5, 5).Terrain.Should().Be(MapTerrain.Forest);
         // ParallaxScene 該以 Forest 渲染（runtime 側由 MainMapRenderer.OnTileChanged → UpdateParallaxScene 處理；
         // 本測試不能直接驗 Godot UI，但 GetTile 已是 single SoT）
     }

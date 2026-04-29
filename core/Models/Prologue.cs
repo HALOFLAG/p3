@@ -36,4 +36,13 @@ public sealed record Prologue(
     /// 空清單 / 缺欄位時 runtime fallback 到「無同伴」（CompanionApSubstitution 不發生）。
     /// </summary>
     public IReadOnlyList<string> StartingCompanionIds { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>
+    /// Phase 3 v1.12 Stage 3 — 模組作者自訂的「3 張選 1」批次抽牌節奏（規格書 §1.5 / §3.1.4）。
+    /// 形狀：每組 1-3 張 tile id，外層為批次序列。tile id 重複表多份 copies（與 tiles.json 的 copies 對應）。
+    /// 缺欄位 / 空陣列時 runtime fallback 到既有 TileDeck 機械抽 3 張。
+    /// 載入時 ModuleLoader 驗證：每組 1-3 張、tile id 必須存在。
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<string>> TileBatches { get; init; }
+        = System.Array.Empty<IReadOnlyList<string>>();
 }

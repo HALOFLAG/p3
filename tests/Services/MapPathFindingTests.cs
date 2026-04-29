@@ -26,7 +26,7 @@ public class MapPathFindingTests
         return GameState.CreateNew(
             module, new[] { heroId },
             module.Prologue.StartingCompanionIds, seed: 1234,
-            gridSize: 9, startPosition: new Position(4, 4));
+            gridSize: 11, startPosition: new Position(5, 5));
     }
 
     /// <summary>輔助：在指定座標放置一個 tile（任意 TileId 即可，BFS 只查 ContainsKey）。</summary>
@@ -41,7 +41,7 @@ public class MapPathFindingTests
         var state = NewState9x9();
         var pf = new MapPathFinding();
 
-        var path = pf.FindPath(state, new Position(4, 4), new Position(4, 4));
+        var path = pf.FindPath(state, new Position(5, 5), new Position(5, 5));
 
         path.Should().BeEmpty();
     }
@@ -54,7 +54,7 @@ public class MapPathFindingTests
         PlaceTile(state, 4, 5);
         var pf = new MapPathFinding();
 
-        var path = pf.FindPath(state, new Position(4, 4), new Position(4, 5));
+        var path = pf.FindPath(state, new Position(5, 5), new Position(4, 5));
 
         path.Should().HaveCount(1);
         path[0].Should().Be(new Position(4, 5));
@@ -70,7 +70,7 @@ public class MapPathFindingTests
         PlaceTile(state, 4, 7);
         var pf = new MapPathFinding();
 
-        var path = pf.FindPath(state, new Position(4, 4), new Position(4, 7));
+        var path = pf.FindPath(state, new Position(5, 5), new Position(4, 7));
 
         path.Should().HaveCount(3);
         path[0].Should().Be(new Position(4, 5));
@@ -85,7 +85,7 @@ public class MapPathFindingTests
         var state = NewState9x9();
         var pf = new MapPathFinding();
 
-        var path = pf.FindPath(state, new Position(4, 4), new Position(4, 5));
+        var path = pf.FindPath(state, new Position(5, 5), new Position(4, 5));
 
         path.Should().BeEmpty();
     }
@@ -98,7 +98,7 @@ public class MapPathFindingTests
         PlaceTile(state, 6, 6);
         var pf = new MapPathFinding();
 
-        var path = pf.FindPath(state, new Position(4, 4), new Position(6, 6));
+        var path = pf.FindPath(state, new Position(5, 5), new Position(6, 6));
 
         path.Should().BeEmpty();
     }
@@ -110,7 +110,7 @@ public class MapPathFindingTests
         var state = NewState9x9();
         var pf = new MapPathFinding();
 
-        var path = pf.FindPath(state, new Position(4, 4), new Position(10, 4));
+        var path = pf.FindPath(state, new Position(5, 5), new Position(10, 4));
 
         path.Should().BeEmpty();
     }

@@ -34,8 +34,8 @@ public class WorldMapDualModeTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
     }
@@ -64,10 +64,10 @@ public class WorldMapDualModeTests
     public void StateMode_PlayerPos_ReadsFromGameState()
     {
         var (_, state, map) = NewStateBackedMap();
-        // CreateNew 把 startPosition (4,4) 設成 Position(X=4, Y=4)
-        state.CurrentPlayer.Position.Should().Be(new Position(4, 4));
+        // v1.13 CreateNew 把 startPosition (5,5) 設成 Position(X=5, Y=5)
+        state.CurrentPlayer.Position.Should().Be(new Position(5, 5));
         // WorldMap.PlayerPos 是 (Row, Col)，state 是 Position(X, Y)；對應 X→Col, Y→Row
-        map.PlayerPos.Should().Be((4, 4));
+        map.PlayerPos.Should().Be((5, 5));
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class WorldMapDualModeTests
     public void StandaloneMode_PlayerPos_UsesInternalField()
     {
         var map = new WorldMap(new NoSubstituteRandom());
-        map.PlayerPos.Should().Be((4, 4)); // InitialPlayerRow, InitialPlayerCol
+        map.PlayerPos.Should().Be((WorldMap.InitialPlayerRow, WorldMap.InitialPlayerCol));
         // standalone mode 沒有 GameState，內部欄位為 source
     }
 

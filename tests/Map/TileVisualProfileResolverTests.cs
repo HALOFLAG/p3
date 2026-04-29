@@ -101,8 +101,8 @@ public class TileVisualProfileResolverTests
         var result = loader.Load(TestPaths.AbandonedMansionFolder);
         var module = ((ModuleLoadResult.Success)result).Module;
 
-        // Stage 2a 拍板：精細路線 — 19 tile 全填
-        module.Tiles.Values.Should().HaveCount(19);
+        // Stage 2a 拍板：精細路線 — v1.12 Stage 6 後 20 tile（新增 mansion-grand-foyer）全填
+        module.Tiles.Values.Should().HaveCount(20);
         module.Tiles.Values.Should().AllSatisfy(t => t.VisualProfile.Should().NotBeNull(
             $"tile '{t.Id}' should have visualProfile per Stage 2a"));
     }

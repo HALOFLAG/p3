@@ -29,5 +29,18 @@
   "importantTileIds": ["mansion-study", "basement-entry", "ritual-hall"],
   "startingCompanionIds": ["old-priest", "hired-bodyguard"],
   "characterUpgradeThreshold": 3,
-  "scoreFormula": "contributions * 2 + equipmentSlotsFilled"
+  "scoreFormula": "contributions * 2 + equipmentSlotsFilled",
+  "tileBatches": [
+    ["village-store", "ruined-chapel"],
+    ["forest-path", "forest-causeway"],
+    ["misty-forest", "forest-causeway", "mansion-front-yard"],
+    ["mansion-foyer"],
+    ["mansion-grand-foyer"],
+    ["mansion-parlor", "mansion-study"],
+    ["grand-hallway", "collapsed-study", "storage-room"],
+    ["upstairs-corridor"],
+    ["hidden-chamber", "basement-entry"],
+    ["underground-passage", "damp-stone-stairs"],
+    ["damp-stone-stairs", "damp-stone-stairs", "ritual-hall"]
+  ]
 }

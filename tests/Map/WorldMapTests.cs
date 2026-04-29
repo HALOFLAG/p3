@@ -24,17 +24,18 @@ public class WorldMapTests
     private static WorldMap NewMap() => new(new NoSubstituteRandom());
 
     [Fact]
-    public void Constructor_PlayerStartsAt4_4()
+    public void Constructor_PlayerStartsAtCenter()
     {
+        // v1.13：grid 9×9 → 11×11，中心 (4,4) → (5,5)。
         var map = NewMap();
-        map.PlayerPos.Should().Be((4, 4));
+        map.PlayerPos.Should().Be((WorldMap.InitialPlayerRow, WorldMap.InitialPlayerCol));
     }
 
     [Fact]
     public void Constructor_InitialTileIsPlacedAndExplored()
     {
         var map = NewMap();
-        var tile = map.GetTile(4, 4);
+        var tile = map.GetTile(WorldMap.InitialPlayerRow, WorldMap.InitialPlayerCol);
         tile.IsPlaced.Should().BeTrue();
         tile.IsExplored.Should().BeTrue();
     }
@@ -46,7 +47,7 @@ public class WorldMapTests
         for (int r = 0; r < WorldMap.Size; r++)
         for (int c = 0; c < WorldMap.Size; c++)
         {
-            if (r == 4 && c == 4) continue;
+            if (r == WorldMap.InitialPlayerRow && c == WorldMap.InitialPlayerCol) continue;
             map.GetTile(r, c).IsPlaced.Should().BeFalse($"({r},{c}) should start unplaced");
             map.GetTile(r, c).IsExplored.Should().BeFalse();
         }
@@ -80,10 +81,10 @@ public class WorldMapTests
     // === IsLegalPlacement ===
 
     [Theory]
-    [InlineData(3, 4)] // up
-    [InlineData(5, 4)] // down
-    [InlineData(4, 3)] // left
-    [InlineData(4, 5)] // right
+    [InlineData(4, 5)] // up（中心 (5,5) 上方）
+    [InlineData(6, 5)] // down
+    [InlineData(5, 4)] // left
+    [InlineData(5, 6)] // right
     public void IsLegalPlacement_FourDirectionalAdjacentEmpty_ReturnsTrue(int r, int c)
     {
         var map = NewMap();
@@ -91,9 +92,9 @@ public class WorldMapTests
     }
 
     [Theory]
-    [InlineData(3, 3)] // diagonal
-    [InlineData(2, 4)] // 2-step
-    [InlineData(4, 4)] // already placed
+    [InlineData(4, 4)] // diagonal
+    [InlineData(3, 5)] // 2-step up
+    [InlineData(5, 5)] // already placed (center)
     public void IsLegalPlacement_NotAdjacentOrOccupied_ReturnsFalse(int r, int c)
     {
         var map = NewMap();
@@ -104,8 +105,8 @@ public class WorldMapTests
     public void IsLegalPlacement_OutOfBounds_ReturnsFalse()
     {
         var map = NewMap();
-        map.IsLegalPlacement(-1, 4).Should().BeFalse();
-        map.IsLegalPlacement(9, 4).Should().BeFalse();
+        map.IsLegalPlacement(-1, 5).Should().BeFalse();
+        map.IsLegalPlacement(11, 5).Should().BeFalse(); // size=11 → 11 越界
     }
 
     // === MapExpand 流程 ===
@@ -139,13 +140,13 @@ public class WorldMapTests
         var modeFired = 0;
         map.ModeChanged += () => modeFired++;
 
-        map.TryPlaceHeldTile(3, 4).Should().BeTrue();
+        map.TryPlaceHeldTile(4, 5).Should().BeTrue(); // (5,5) 中心上方
 
-        map.GetTile(3, 4).IsPlaced.Should().BeTrue();
-        map.GetTile(3, 4).Terrain.Should().Be(MapTerrain.Path);
+        map.GetTile(4, 5).IsPlaced.Should().BeTrue();
+        map.GetTile(4, 5).Terrain.Should().Be(MapTerrain.Path);
         map.HeldTile.Should().BeNull();
         map.Mode.Should().Be(InteractionMode.Idle);
-        placed.Should().ContainSingle().Which.Should().Be((MapTerrain.Path, 3, 4));
+        placed.Should().ContainSingle().Which.Should().Be((MapTerrain.Path, 4, 5));
         modeFired.Should().Be(1);
     }
 
@@ -192,46 +193,46 @@ public class WorldMapTests
     public void IsLegalMoveTarget_PlacedFourAdjacent_True()
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4); // Path
+        PlaceTile(map, 4, 5); // Path 放在 (5,5) 上方
 
-        map.IsLegalMoveTarget(3, 4).Should().BeTrue();
+        map.IsLegalMoveTarget(4, 5).Should().BeTrue();
     }
 
     [Fact]
     public void IsLegalMoveTarget_UnplacedAdjacent_False()
     {
         var map = NewMap();
-        // (3,4) 未放置
-        map.IsLegalMoveTarget(3, 4).Should().BeFalse();
+        // (4,5) 未放置
+        map.IsLegalMoveTarget(4, 5).Should().BeFalse();
     }
 
     [Fact]
     public void TryMovePlayerTo_PlacedAdjacent_Succeeds()
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4);
+        PlaceTile(map, 4, 5);
 
-        map.TryMovePlayerTo(3, 4).Should().Be(MovePlayerResult.Ok);
-        map.PlayerPos.Should().Be((3, 4));
-        map.GetTile(3, 4).IsExplored.Should().BeTrue();
+        map.TryMovePlayerTo(4, 5).Should().Be(MovePlayerResult.Ok);
+        map.PlayerPos.Should().Be((4, 5));
+        map.GetTile(4, 5).IsExplored.Should().BeTrue();
     }
 
     [Fact]
     public void TryMovePlayerTo_UnplacedAdjacent_Fails()
     {
         var map = NewMap();
-        map.TryMovePlayerTo(3, 4).Should().Be(MovePlayerResult.IllegalTarget);
-        map.PlayerPos.Should().Be((4, 4));
+        map.TryMovePlayerTo(4, 5).Should().Be(MovePlayerResult.IllegalTarget);
+        map.PlayerPos.Should().Be((WorldMap.InitialPlayerRow, WorldMap.InitialPlayerCol));
     }
 
     [Theory]
-    [InlineData(3, 3)]
-    [InlineData(5, 5)]
-    [InlineData(2, 4)]
+    [InlineData(4, 4)] // 對角線
+    [InlineData(6, 6)] // 對角線
+    [InlineData(3, 5)] // 2 步遠
     public void TryMovePlayerTo_DiagonalOrFar_Fails(int r, int c)
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4);
+        PlaceTile(map, 4, 5);
         map.TryMovePlayerTo(r, c).Should().Be(MovePlayerResult.IllegalTarget);
     }
 
@@ -239,10 +240,10 @@ public class WorldMapTests
     public void TryMovePlayerTo_FromMoveMode_ReturnsToIdle()
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4);
+        PlaceTile(map, 4, 5);
         map.BeginMoveMode();
 
-        map.TryMovePlayerTo(3, 4);
+        map.TryMovePlayerTo(4, 5);
 
         map.Mode.Should().Be(InteractionMode.Idle);
     }
@@ -291,10 +292,10 @@ public class WorldMapTests
     public void TryMovePlayerTo_FirstMoveThisTurn_FreeNoApCost()
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4);
+        PlaceTile(map, 4, 5);
         var startAp = map.Ap;
 
-        map.TryMovePlayerTo(3, 4).Should().Be(MovePlayerResult.Ok);
+        map.TryMovePlayerTo(4, 5).Should().Be(MovePlayerResult.Ok);
 
         map.Ap.Should().Be(startAp); // 第 1 格免費
         map.FirstMoveUsedThisTurn.Should().BeTrue();
@@ -304,13 +305,13 @@ public class WorldMapTests
     public void TryMovePlayerTo_SecondMoveThisTurn_CostsOneAp()
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4);  // (4,4)->(3,4) 鄰
-        PlaceTile(map, 2, 4);  // (3,4)->(2,4) 鄰
+        PlaceTile(map, 4, 5);  // (5,5)->(4,5) 鄰
+        PlaceTile(map, 3, 5);  // (4,5)->(3,5) 鄰
 
-        map.TryMovePlayerTo(3, 4); // 免費
+        map.TryMovePlayerTo(4, 5); // 免費
         var afterFirst = map.Ap;
         map.BeginMoveMode();
-        map.TryMovePlayerTo(2, 4).Should().Be(MovePlayerResult.Ok); // 第 2 格扣 1
+        map.TryMovePlayerTo(3, 5).Should().Be(MovePlayerResult.Ok); // 第 2 格扣 1
         map.Ap.Should().Be(afterFirst - 1);
     }
 
@@ -318,19 +319,16 @@ public class WorldMapTests
     public void TryMovePlayerTo_NotEnoughAp_Fails()
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4);
-        PlaceTile(map, 2, 4);
-        PlaceTile(map, 1, 4);
-        PlaceTile(map, 0, 4);
+        PlaceTile(map, 4, 5);
+        PlaceTile(map, 3, 5);
+        PlaceTile(map, 2, 5);
+        PlaceTile(map, 1, 5);
 
-        map.TryMovePlayerTo(3, 4); // 免費
-        map.BeginMoveMode(); map.TryMovePlayerTo(2, 4); // 1 AP → 2
-        map.BeginMoveMode(); map.TryMovePlayerTo(1, 4); // 1 AP → 1
-        map.BeginMoveMode(); map.TryMovePlayerTo(0, 4); // 1 AP → 0
+        map.TryMovePlayerTo(4, 5); // 免費
+        map.BeginMoveMode(); map.TryMovePlayerTo(3, 5); // 1 AP → 2
+        map.BeginMoveMode(); map.TryMovePlayerTo(2, 5); // 1 AP → 1
+        map.BeginMoveMode(); map.TryMovePlayerTo(1, 5); // 1 AP → 0
         map.Ap.Should().Be(0);
-
-        // 接下來想再走（但已無相鄰已放格 + AP=0）
-        // 這裡其實已沒合法目標，所以就用 mode 回到不可移動
     }
 
     [Fact]
@@ -391,11 +389,11 @@ public class WorldMapTests
     public void AdvanceTurn_ResetsApAndHandAndIncrementsTurn()
     {
         var map = NewMap();
-        PlaceTile(map, 3, 4);
-        PlaceTile(map, 2, 4);
-        map.TryMovePlayerTo(3, 4);
+        PlaceTile(map, 4, 5);
+        PlaceTile(map, 3, 5);
+        map.TryMovePlayerTo(4, 5);
         map.BeginMoveMode();
-        map.TryMovePlayerTo(2, 4); // 已扣 1 AP
+        map.TryMovePlayerTo(3, 5); // 已扣 1 AP
 
         var beforeAp = map.Ap;
         var ok = map.AdvanceTurn();
@@ -568,10 +566,10 @@ public class WorldMapTests
 
     [Theory]
     [InlineData(0, 0, true)]
-    [InlineData(8, 8, true)]
+    [InlineData(10, 10, true)]
     [InlineData(-1, 0, false)]
-    [InlineData(9, 0, false)]
-    public void IsInBounds_GridSize9_ChecksCorrectly(int r, int c, bool expected)
+    [InlineData(11, 0, false)]
+    public void IsInBounds_GridSize11_ChecksCorrectly(int r, int c, bool expected)
     {
         WorldMap.IsInBounds(r, c).Should().Be(expected);
     }

@@ -10,16 +10,23 @@ namespace HauntedManor.Scripts.Ui;
 /// </summary>
 public partial class RightPanel : PanelContainer
 {
+    /// <summary>v1.12 Stage 5 — 玩家在 MapExpand 模式下點 batch slot（idx 0/1/2）。</summary>
+    [Signal] public delegate void BatchSlotClickedEventHandler(int slotIdx);
+
     // Slot 1：未持有時顯示「下一張」（deck 頂端）；持有時顯示「持有」+ 高亮
     private TilePreviewCard? _slot1Card;
     private Label? _slot1TitleLabel;
     private Label? _slot1NameLabel;
     private TilePreviewCard? _slot2Card;
+    private Label? _slot2TitleLabel;
     private Label? _slot2NameLabel;
     private TilePreviewCard? _slot3Card;
+    private Label? _slot3TitleLabel;
     private Label? _slot3NameLabel;
     private Label? _deckRemainingLabel;
     private RichTextLabel? _logText;
+    /// <summary>v1.12 Stage 5 — 是否處於 MapExpand 模式（slots 應 clickable）。</summary>
+    private bool _batchClickable;
 
     /// <summary>區塊 #15 ORBIT 任務板 — Task 9 起取代舊 stub grid，由 MainBootstrap 注入 EventOrbit。</summary>
     public OrbitPanel? OrbitPanel { get; private set; }
@@ -75,38 +82,49 @@ public partial class RightPanel : PanelContainer
         string previewSecond, string previewSecondName,
         string previewThird, string previewThirdName)
     {
-        var held = ParseTerrain(heldTerrain);
-        if (held is { } heldTile)
-        {
-            // 持有中：slot1 = 持有（高亮 + 「持有」）；slot2 = deck 頂；slot3 = deck 第 2
-            _slot1Card?.SetTerrain(heldTile);
-            _slot1Card?.SetHighlighted(true);
-            if (_slot1TitleLabel != null) _slot1TitleLabel.Text = "持有";
-            SetNameLabel(_slot1NameLabel, heldName, heldTile);
-            var top = ParseTerrain(previewTop);
-            _slot2Card?.SetTerrain(top);
-            SetNameLabel(_slot2NameLabel, previewTopName, top);
-            var second = ParseTerrain(previewSecond);
-            _slot3Card?.SetTerrain(second);
-            SetNameLabel(_slot3NameLabel, previewSecondName, second);
-        }
-        else
-        {
-            // 待命：slot1 = 下一張（無高亮）；slot2 = 第 2 張；slot3 = 第 3 張
-            var top = ParseTerrain(previewTop);
-            _slot1Card?.SetTerrain(top);
-            _slot1Card?.SetHighlighted(false);
-            if (_slot1TitleLabel != null) _slot1TitleLabel.Text = "下一張";
-            SetNameLabel(_slot1NameLabel, previewTopName, top);
-            var second = ParseTerrain(previewSecond);
-            _slot2Card?.SetTerrain(second);
-            SetNameLabel(_slot2NameLabel, previewSecondName, second);
-            var third = ParseTerrain(previewThird);
-            _slot3Card?.SetTerrain(third);
-            SetNameLabel(_slot3NameLabel, previewThirdName, third);
-        }
+        // v1.12 Stage 5：3 個 slot 直接顯示 virtual slot[0/1/2]；持有時透過 name 比對找出 held 在哪 slot 並高亮。
+        // 視覺穩定：持有/取消/re-select 不會讓既有 slot 跳位，玩家點哪格 highlight 在哪格。
+        ApplySlot(0, _slot1Card, _slot1TitleLabel, _slot1NameLabel,
+            previewTop, previewTopName, heldTerrain, heldName);
+        ApplySlot(1, _slot2Card, _slot2TitleLabel, _slot2NameLabel,
+            previewSecond, previewSecondName, heldTerrain, heldName);
+        ApplySlot(2, _slot3Card, _slot3TitleLabel, _slot3NameLabel,
+            previewThird, previewThirdName, heldTerrain, heldName);
         if (_deckRemainingLabel != null)
             _deckRemainingLabel.Text = $"剩餘 {remaining} 張";
+    }
+
+    /// <summary>把單一 slot 套上 virtual slot 內容；若 slot 內容對應到 held tile 則高亮 + 標題「持有」。</summary>
+    private void ApplySlot(int slotIdx, TilePreviewCard? card, Label? title, Label? name,
+        string slotTerrain, string slotName, string heldTerrain, string heldName)
+    {
+        var terrain = ParseTerrain(slotTerrain);
+        card?.SetTerrain(terrain);
+        bool isHeld = !string.IsNullOrEmpty(heldName) && slotName == heldName && slotTerrain == heldTerrain;
+        card?.SetHighlighted(isHeld);
+        if (title != null)
+        {
+            title.Text = isHeld
+                ? "持有"
+                : (_batchClickable ? $"選擇 {slotIdx + 1}" : SlotIdleTitle(slotIdx));
+        }
+        SetNameLabel(name, slotName, terrain);
+    }
+
+    private static string SlotIdleTitle(int slotIdx) => slotIdx switch
+    {
+        0 => "下一張",
+        1 => "第 2 張",
+        _ => "第 3 張",
+    };
+
+    /// <summary>v1.12 Stage 5 — MainMapRenderer 在 ModeChangedExt 時呼叫；MapExpand → slot clickable。</summary>
+    public void SetBatchClickable(bool clickable)
+    {
+        _batchClickable = clickable;
+        _slot1Card?.SetClickable(clickable);
+        _slot2Card?.SetClickable(clickable);
+        _slot3Card?.SetClickable(clickable);
     }
 
     /// <summary>
@@ -153,8 +171,13 @@ public partial class RightPanel : PanelContainer
         v.AddChild(row);
         // Slot 1：未持有 → 「下一張」；持有時切「持有」+ 高亮（OnDeckStatusChanged 內處理）
         row.AddChild(MakePreviewSlot("下一張", out _slot1Card, out _slot1TitleLabel, out _slot1NameLabel));
-        row.AddChild(MakePreviewSlot("第 2 張", out _slot2Card, out _, out _slot2NameLabel));
-        row.AddChild(MakePreviewSlot("第 3 張", out _slot3Card, out _, out _slot3NameLabel));
+        row.AddChild(MakePreviewSlot("第 2 張", out _slot2Card, out _slot2TitleLabel, out _slot2NameLabel));
+        row.AddChild(MakePreviewSlot("第 3 張", out _slot3Card, out _slot3TitleLabel, out _slot3NameLabel));
+
+        // v1.12 Stage 5 — 三 slot 點擊時 emit BatchSlotClicked(idx)；MapExpand 模式才 clickable
+        _slot1Card!.Clicked += () => EmitSignal(SignalName.BatchSlotClicked, 0);
+        _slot2Card!.Clicked += () => EmitSignal(SignalName.BatchSlotClicked, 1);
+        _slot3Card!.Clicked += () => EmitSignal(SignalName.BatchSlotClicked, 2);
 
         _deckRemainingLabel = MakeColoredLabel("剩餘 — 張", 10, Palette.OrnamentInk);
         v.AddChild(_deckRemainingLabel);

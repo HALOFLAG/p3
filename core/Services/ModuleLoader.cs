@@ -68,6 +68,22 @@ public sealed class ModuleLoader
             }
         }
 
+        // v1.12 Stage 3 — 驗證 prologue.tileBatches 內每個 tile id 存在於 tiles。
+        // 每組 1-3 張的 size 限制由 schema 層擋住（minItems/maxItems），此處只查交叉引用。
+        for (int bi = 0; bi < prologue.TileBatches.Count; bi++)
+        {
+            var batch = prologue.TileBatches[bi];
+            for (int ti = 0; ti < batch.Count; ti++)
+            {
+                if (!tileMap.ContainsKey(batch[ti]))
+                {
+                    errors.Add(new ValidationError("prologue.json",
+                        $"/tileBatches/{bi}/{ti}",
+                        $"tileBatches tile id '{batch[ti]}' not found in tiles"));
+                }
+            }
+        }
+
         foreach (var ev in events)
         {
             if (ev.Trigger is TileEnterTrigger te && !tileMap.ContainsKey(te.TileId))

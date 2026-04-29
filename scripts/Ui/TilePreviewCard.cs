@@ -20,9 +20,13 @@ public partial class TilePreviewCard : PanelContainer
 {
     public const int CardSize = 100;     // 正方形 100×100
 
+    /// <summary>v1.12 Stage 5 — 可點擊（如 RightPanel batch slot 進 MapExpand 模式）。</summary>
+    [Signal] public delegate void ClickedEventHandler();
+
     private TextureRect? _texture;
     private MapTerrain? _terrain;
     private bool _highlighted;
+    private bool _clickable;
 
     private static readonly System.Collections.Generic.Dictionary<MapTerrain, string> TerrainTexturePaths = new()
     {
@@ -51,7 +55,7 @@ public partial class TilePreviewCard : PanelContainer
 
         CustomMinimumSize = new Vector2(CardSize, CardSize);
         AddThemeStyleboxOverride("panel", BuildFrameStyle(empty: true));
-        MouseFilter = MouseFilterEnum.Ignore;
+        MouseFilter = _clickable ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
 
         _texture = new TextureRect
         {
@@ -60,6 +64,24 @@ public partial class TilePreviewCard : PanelContainer
             MouseFilter = MouseFilterEnum.Ignore,
         };
         AddChild(_texture);
+    }
+
+    /// <summary>v1.12 Stage 5 — 切換是否吃 mouse click（emit Clicked signal）。</summary>
+    public void SetClickable(bool clickable)
+    {
+        _clickable = clickable;
+        MouseFilter = clickable ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        MouseDefaultCursorShape = clickable ? CursorShape.PointingHand : CursorShape.Arrow;
+    }
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (!_clickable) return;
+        if (@event is InputEventMouseButton mb && mb.Pressed && mb.ButtonIndex == MouseButton.Left)
+        {
+            EmitSignal(SignalName.Clicked);
+            AcceptEvent();
+        }
     }
 
     /// <summary>填入 terrain（null = 空槽）。</summary>

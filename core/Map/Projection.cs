@@ -5,9 +5,9 @@ namespace CardNarrative.Core.Map;
 /// 對應規格書 §5.1.1 / §5.1.2。
 ///
 /// 投影規則：
-/// - 視野為 5×5（上下對稱），玩家位於中央 (relRow=0, relCol=0)
-/// - relRow = -2 為最遠（螢幕頂、消失點附近）；relRow = +2 為最近（螢幕底）
-/// - depthIndex = relRow + 2，0 = 最遠，4 = 最近
+/// - 視野為 11×11（v1.13 起；v1.7 為 7×7、原 v1.0 規格 5×5），玩家位於中央 (relRow=0, relCol=0)
+/// - relRow = -5 為最遠（螢幕頂、消失點附近）；relRow = +5 為最近（螢幕底）
+/// - depthIndex = relRow + 5，0 = 最遠，10 = 最近
 /// - 規格書 §5.1.2：t = depthIndex / maxDepth；y = vpY + (groundY - vpY) × t²
 ///   其中 t=0 → y=vpY（頂部，消失點上）；t=1 → y=groundY（底部，地面）
 /// - scale 隨 t 線性變化：t=0（遠）為 farScale；t=1（近）為 1.0
@@ -19,10 +19,11 @@ namespace CardNarrative.Core.Map;
 /// </summary>
 public static class Projection
 {
-    /// <summary>規格書 §5.1.1 預設參數（7×7 視野 + 強透視 + linear Y）。</summary>
+    /// <summary>規格書 §5.1.1 預設參數（v1.13 起 11×11 視野 + 強透視 + linear Y）。</summary>
     /// <remarks>
-    /// 1:1 條件（player row）：yRange = BaseTileSize × ((1+FarScale)/2) × visibleRows
-    ///         = 70 × 0.775 × 7 = 379.75 → 取 380 (vpY=220, groundY=600)
+    /// v1.13 從 7×7 擴成 11×11：visibleRows/Cols 7→11；BaseTileSize 70 不變。
+    /// 已知議題（待後續修）：BaseTileSize=70 + 11 cols 在前排 (近端 scale ~0.98) 寬度 753 大於 ViewWidth 560，
+    /// col=±5/±4 前排 tile 會超出視窗左右邊緣；y 軸同樣會略溢出底部。本次不調 size，以擴 grid 為主。
     /// FarScale=0.55 → 遠列寬度 ~57% 近列，符合明顯傾斜的桌面視角。
     /// </remarks>
     public static readonly ProjectionParams Default = new(
@@ -32,8 +33,8 @@ public static class Projection
         GroundY: 600f,
         BaseTileSize: 70f,
         FarScale: 0.55f,       // 強透視（遠列縮 ~45%）→ 明顯傾斜的桌面感
-        VisibleRows: 7,
-        VisibleCols: 7);
+        VisibleRows: 11,       // v1.13：7 → 11，整盤一次可見
+        VisibleCols: 11);
 
     /// <summary>計算單一可見地塊在 viewBox 中的螢幕座標（top-left）與大小。</summary>
     /// <param name="relRow">玩家為原點的相對 row：-2 (最遠) ~ +2 (最近)</param>
@@ -85,11 +86,11 @@ public static class Projection
         return new ProjectedQuad(backLeft, backRight, frontRight, frontLeft, center);
     }
 
-    /// <summary>判斷某 (relRow, relCol) 是否在 5×5 可見範圍。</summary>
+    /// <summary>判斷某 (relRow, relCol) 是否在可見範圍（v1.13 起 11×11，halfRows/Cols=5）。</summary>
     public static bool IsVisible(int relRow, int relCol, ProjectionParams p)
     {
-        var halfRows = p.VisibleRows / 2; // 5 → 2
-        var halfCols = p.VisibleCols / 2; // 5 → 2
+        var halfRows = p.VisibleRows / 2; // 11 → 5
+        var halfCols = p.VisibleCols / 2; // 11 → 5
         return relRow >= -halfRows && relRow <= halfRows
             && relCol >= -halfCols && relCol <= halfCols;
     }

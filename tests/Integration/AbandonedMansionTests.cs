@@ -24,7 +24,7 @@ public class AbandonedMansionTests
         module.Manifest.Id.Should().Be("abandoned-mansion");
         module.Characters.Should().HaveCount(4);
         module.NpcCompanions.Should().HaveCount(3);
-        module.Tiles.Should().HaveCount(19);
+        module.Tiles.Should().HaveCount(20); // v1.12 Stage 6：新增 mansion-grand-foyer
         module.Events.Should().HaveCount(13);
         module.ActionCards.Should().HaveCount(40);
         module.Equipment.Should().HaveCount(25);

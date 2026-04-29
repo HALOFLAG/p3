@@ -38,8 +38,8 @@ public class OrbitOutcomeBridgeTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
     }
@@ -49,11 +49,11 @@ public class OrbitOutcomeBridgeTests
     {
         var (module, state, map) = NewStateBackedRuntime();
         // 起始 tile = village-square (Building) at (4,4)
-        state.TileMap[(4, 4)].TileId.Should().Be("village-square");
-        map.GetTile(4, 4).Terrain.Should().Be(MapTerrain.Building);
+        state.TileMap[(5, 5)].TileId.Should().Be("village-square");
+        map.GetTile(5, 5).Terrain.Should().Be(MapTerrain.Building);
 
         // 模擬 outcome：把 (4,4) 變成 forest-path（visualProfile=Forest）
-        var effect = new TransformTileEffect("forest-path", X: 4, Y: 4);
+        var effect = new TransformTileEffect("forest-path", X: 5, Y: 5);
         var changedEvents = new List<(int row, int col)>();
         map.TileChanged += (r, c) => changedEvents.Add((r, c));
 
@@ -62,7 +62,7 @@ public class OrbitOutcomeBridgeTests
         try
         {
             new EffectHandler().Apply(effect, state, module);
-            map.NotifyTileChanged(4, 4); // row=Y=4, col=X=4
+            map.NotifyTileChanged(5, 5); // row=Y=4, col=X=4
         }
         finally
         {
@@ -70,12 +70,12 @@ public class OrbitOutcomeBridgeTests
         }
 
         // state.TileMap 已換成 forest-path
-        state.TileMap[(4, 4)].TileId.Should().Be("forest-path");
+        state.TileMap[(5, 5)].TileId.Should().Be("forest-path");
         // GetTile 反映新 terrain
-        map.GetTile(4, 4).Terrain.Should().Be(MapTerrain.Forest);
+        map.GetTile(5, 5).Terrain.Should().Be(MapTerrain.Forest);
         // TileChanged 事件 emit 一次
         changedEvents.Should().HaveCount(1);
-        changedEvents[0].Should().Be((4, 4));
+        changedEvents[0].Should().Be((5, 5));
     }
 
     [Fact]
@@ -83,8 +83,8 @@ public class OrbitOutcomeBridgeTests
     {
         var (module, state, map) = NewStateBackedRuntime();
         // 加幾格 outdoor wilderness tile
-        state.TileMap[(3, 4)] = new PlacedTile { TileId = "forest-path", Level = ExplorationLevel.Familiar };
-        state.TileMap[(5, 4)] = new PlacedTile { TileId = "misty-forest", Level = ExplorationLevel.Familiar };
+        state.TileMap[(4, 5)] = new PlacedTile { TileId = "forest-path", Level = ExplorationLevel.Familiar };
+        state.TileMap[(6, 5)] = new PlacedTile { TileId = "misty-forest", Level = ExplorationLevel.Familiar };
         // (4,4) village-square 是 town tag，不在 outdoor 範圍
 
         var effect = new TransformTilesByTagEffect(
@@ -113,9 +113,9 @@ public class OrbitOutcomeBridgeTests
 
         // 三格都有 "outdoor" tag（village-square: village+outdoor / forest-path / misty-forest）
         // → 全部變成 mansion-front-yard
-        state.TileMap[(3, 4)].TileId.Should().Be("mansion-front-yard");
-        state.TileMap[(4, 4)].TileId.Should().Be("mansion-front-yard");
-        state.TileMap[(5, 4)].TileId.Should().Be("mansion-front-yard");
+        state.TileMap[(4, 5)].TileId.Should().Be("mansion-front-yard");
+        state.TileMap[(5, 5)].TileId.Should().Be("mansion-front-yard");
+        state.TileMap[(6, 5)].TileId.Should().Be("mansion-front-yard");
 
         // 事件至少 3 個（三格都受影響）
         changedEvents.Count.Should().BeGreaterThanOrEqualTo(3);
@@ -132,7 +132,7 @@ public class OrbitOutcomeBridgeTests
         map.BeginEventBatch();
         // 故意先 enqueue HpChanged 再 TileChanged
         map.NotifyHpChanged(3);
-        map.NotifyTileChanged(4, 4);
+        map.NotifyTileChanged(5, 5);
         map.NotifyHpChanged(5);
         emitOrder.Should().BeEmpty(); // 尚未 flush
         map.EndEventBatch();
@@ -148,7 +148,7 @@ public class OrbitOutcomeBridgeTests
     {
         var (module, state, map) = NewStateBackedRuntime();
         // 起始 (4,4) = village-square (visualProfile=Building)
-        state.TileMap[(4, 4)].TileId.Should().Be("village-square");
+        state.TileMap[(5, 5)].TileId.Should().Be("village-square");
 
         // 模擬 MainBootstrap.OnEventResolved 完整流程：
         // 1. 抓 OLD terrain
@@ -157,22 +157,22 @@ public class OrbitOutcomeBridgeTests
         var transformedEvents = new List<(int row, int col, MapTerrain oldT, MapTerrain newT)>();
         map.TileTransformed += (r, c, o, n) => transformedEvents.Add((r, c, o, n));
 
-        var effect = new TransformTileEffect("forest-path", X: 4, Y: 4);
+        var effect = new TransformTileEffect("forest-path", X: 5, Y: 5);
 
         map.BeginEventBatch();
         try
         {
             // 抓 OLD terrain
-            var oldTile = module.Tiles[state.TileMap[(4, 4)].TileId];
+            var oldTile = module.Tiles[state.TileMap[(5, 5)].TileId];
             var oldTerrain = TileVisualProfileResolver.ResolveTerrain(oldTile);
 
             new EffectHandler().Apply(effect, state, module);
 
             // 抓 NEW terrain（state 已 mutate）
-            var newTile = module.Tiles[state.TileMap[(4, 4)].TileId];
+            var newTile = module.Tiles[state.TileMap[(5, 5)].TileId];
             var newTerrain = TileVisualProfileResolver.ResolveTerrain(newTile);
 
-            map.NotifyTileChanged(4, 4);
+            map.NotifyTileChanged(5, 5);
             map.NotifyTileTransformed(4, 4, oldTerrain, newTerrain);
         }
         finally
@@ -185,7 +185,7 @@ public class OrbitOutcomeBridgeTests
         transformedEvents[0].Should().Be((4, 4, MapTerrain.Building, MapTerrain.Forest));
 
         // state 也已 mutate
-        state.TileMap[(4, 4)].TileId.Should().Be("forest-path");
-        map.GetTile(4, 4).Terrain.Should().Be(MapTerrain.Forest);
+        state.TileMap[(5, 5)].TileId.Should().Be("forest-path");
+        map.GetTile(5, 5).Terrain.Should().Be(MapTerrain.Forest);
     }
 }

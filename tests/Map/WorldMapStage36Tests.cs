@@ -34,8 +34,8 @@ public class WorldMapStage36Tests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
     }
@@ -113,7 +113,7 @@ public class WorldMapStage36Tests
             var state = GameState.CreateNew(
                 module, new[] { heroId },
                 module.Prologue.StartingCompanionIds, seed: 42,
-                gridSize: 9, startPosition: new Position(4, 4));
+                gridSize: 11, startPosition: new Position(5, 5));
             var map = new WorldMap(state, module, new NoSubstituteRandom());
             // 8 張卡進 deck → 抽 5 → 把 5 張 hand 移到 discard → 再抽 5（觸發重洗）
             map.LoadActionDeck(module.ActionCards.Values.Take(8).ToList());
@@ -137,10 +137,10 @@ public class WorldMapStage36Tests
     public void StateMode_StartingTile_IsExploredTrue_AvoidsCardBackDisplay()
     {
         var (_, state, map) = NewStateBackedMap();
-        // CreateNew 預設起始格 Level=Unfamiliar
-        state.TileMap[(4, 4)].Level.Should().Be(ExplorationLevel.Unfamiliar);
+        // CreateNew 預設起始格 Level=Unfamiliar（v1.13 中心 (5,5)）
+        state.TileMap[(5, 5)].Level.Should().Be(ExplorationLevel.Unfamiliar);
         // Stage 3.6：IsExplored 門檻 >= Unfamiliar → true
-        map.GetTile(4, 4).IsExplored.Should().BeTrue();
+        map.GetTile(5, 5).IsExplored.Should().BeTrue();
     }
 
     [Theory]
@@ -153,8 +153,8 @@ public class WorldMapStage36Tests
         ExplorationLevel level, bool expected)
     {
         var (_, state, map) = NewStateBackedMap();
-        state.TileMap[(4, 4)].Level = level;
-        map.GetTile(4, 4).IsExplored.Should().Be(expected);
+        state.TileMap[(5, 5)].Level = level;
+        map.GetTile(5, 5).IsExplored.Should().Be(expected);
     }
 
     [Fact]

@@ -28,6 +28,8 @@ public partial class MainMapRenderer : Control
     private ProjectionParams _projection;
     private ParallaxSceneController? _parallaxScene; // 任務 8 場景立繪
     private TextureRect? _ghostTile; // MapExpand 模式跟隨滑鼠的 ghost preview
+    private CanvasLayer? _ghostLayer; // v1.12：脫離 MainMapRenderer 子層 → 全域 CanvasLayer，跟隨可跨右側面板
+    private TileGroupOutlineLayer? _groupOutlineLayer; // v1.12 Stage 7：地塊組金色外框
     private const int GhostSize = 100; // 與 RightPanel TilePreviewCard 同尺寸
 
     // 攝影機平移動畫：在「rel 座標」層補間（X=row offset, Y=col offset，皆為 tile 單位的小數）。
@@ -272,7 +274,10 @@ public partial class MainMapRenderer : Control
         AddChild(_parallaxScene);
         _parallaxScene.ZIndex = 5; // 蓋過 tile，但低於 popup/dialog
 
-        // MapExpand 模式滑鼠跟隨 ghost：顯示 HeldTile PNG，跟著游標移動
+        // v1.12：MapExpand ghost 改寄生於頂層 CanvasLayer，避開 MainMapRenderer 父層的 hit-test 邊界
+        // → 滑鼠滑進右側面板 / 小地圖時 ghost 仍跟隨；位置由 _Process 持續輪詢全域 mouse 位置更新
+        _ghostLayer = new CanvasLayer { Name = "GhostLayer", Layer = 12 };
+        AddChild(_ghostLayer);
         _ghostTile = new TextureRect
         {
             Name = "GhostTile",
@@ -283,9 +288,9 @@ public partial class MainMapRenderer : Control
             Visible = false,
             MouseFilter = Control.MouseFilterEnum.Ignore,
             Modulate = new Color(1, 1, 1, 0.85f),
-            ZIndex = 20, // 蓋過所有東西
+            ZIndex = 20,
         };
-        AddChild(_ghostTile);
+        _ghostLayer.AddChild(_ghostTile);
 
         // 視框尺寸可能還是 0（若被父 container 排版尚未完成）→ 等下一個 frame 重算
         CallDeferred(nameof(InitialLayout));
@@ -383,11 +388,7 @@ public partial class MainMapRenderer : Control
         // （Control 攔截 mouse event 走 _GuiInput，TileVisual 內 Area2D 收不到 hover signal）
         if (@event is InputEventMouseMotion motionEv)
         {
-            // MapExpand 時讓 ghost tile 跟隨滑鼠
-            if (_ghostTile is { Visible: true })
-            {
-                _ghostTile.Position = new Vector2(motionEv.Position.X - GhostSize / 2f, motionEv.Position.Y - GhostSize / 2f);
-            }
+            // v1.12：ghost 位置由 _Process 全域輪詢更新（脫離 MainMapRenderer hit-test 邊界，可跨右側面板跟隨）
             UpdateHoverFromMousePosition(motionEv.Position);
             return;
         }
@@ -505,13 +506,42 @@ public partial class MainMapRenderer : Control
             AppendLog("目前不是待命狀態，無法抽地塊。");
             return;
         }
-        if (_worldMap.RemainingTiles == 0)
+        if (_worldMap.RemainingTiles == 0 && _worldMap.TileChoiceBatchIds.Count == 0)
         {
             AppendLog("牌堆已空。");
             return;
         }
-        _worldMap.BeginMapExpand();
-        AppendLog($"抽到地塊：{_worldMap.HeldTile}，請點擊綠色合法區放置。");
+        if (!_worldMap.BeginMapExpand())
+        {
+            AppendLog("無法抽地塊（牌堆空或狀態不符）。");
+            return;
+        }
+        // v1.12 Stage 5 — 進 MapExpand 模式後 batch 已填，玩家從 RightPanel slot 點選 1 張
+        AppendLog($"抽到 {_worldMap.TileChoiceBatchIds.Count} 張，請從右側 RightPanel 三 slot 選一張。");
+    }
+
+    /// <summary>
+    /// v1.12 Stage 5 — 玩家點 RightPanel batch slot（visual idx 0/1/2）→ 直接傳給 WorldMap.SelectFromBatch。
+    /// 後端 SelectFromBatch 自行處理視覺 slot 投影（持有時自己 slot 點到回 false；其他 slot swap）。
+    /// </summary>
+    public void RequestSelectFromBatch(int slotIdx)
+    {
+        if (_worldMap.Mode != InteractionMode.MapExpand) return;
+        if (!_worldMap.SelectFromBatch(slotIdx))
+        {
+            // 點到自己的 slot 或越界
+            return;
+        }
+        // v1.12 Stage 6：地塊組額外標示總格數
+        var state = _worldMap.BackingState;
+        if (state is not null && state.PendingGroupRemaining > 0)
+        {
+            AppendLog($"持有：{_worldMap.HeldTileId}（地塊組 1/{state.PendingGroupRemaining}），請連續放 {state.PendingGroupRemaining} 格。");
+        }
+        else
+        {
+            AppendLog($"持有：{_worldMap.HeldTileId}，請點主地圖綠框合法格放置。");
+        }
     }
 
     /// <summary>外部注入行動卡 deck（規格書 §3.4 序幕 setupRules.initialActionDeck）。</summary>
@@ -628,6 +658,16 @@ public partial class MainMapRenderer : Control
         // 路徑預覽 overlay：加在 _tileLayer 之上，z-index 在 ParallaxScene 立繪盒之下但高於 tile
         _pathPreview = new PathPreviewOverlay { Name = "PathPreviewOverlay" };
         _tileLayer.AddChild(_pathPreview);
+
+        // v1.12 Stage 7：地塊組金色外框（z-index 高於 tile，低於 path preview）
+        _groupOutlineLayer = new TileGroupOutlineLayer
+        {
+            Name = "TileGroupOutlineLayer",
+            ZIndex = 50, // path preview ZIndex=100；tile 預設 0；外框介於中間
+            ZAsRelative = false,
+        };
+        _tileLayer.AddChild(_groupOutlineLayer);
+        _groupOutlineLayer.Configure(_worldMap, _tileNodes);
     }
 
     private void SubscribeWorldMap()
@@ -756,6 +796,9 @@ public partial class MainMapRenderer : Control
         {
             UpdateParallaxScene();
         }
+
+        // v1.12 Stage 7：tile 變動可能影響地塊組外框（新放/移除/transform）→ 重畫
+        _groupOutlineLayer?.QueueRedraw();
     }
 
     private void OnPlayerMoved(int oldRow, int oldCol, int newRow, int newCol)
@@ -824,15 +867,29 @@ public partial class MainMapRenderer : Control
     private void UpdateGhostTileVisibility()
     {
         if (_ghostTile == null) return;
+        // v1.12：唯有「持有」時 ghost 才顯示（待選 batch 階段不顯示，避免空白 ghost 誤導）
         bool show = _worldMap.Mode == InteractionMode.MapExpand && _worldMap.HeldTile is { } held;
         _ghostTile.Visible = show;
         if (show && _worldMap.HeldTile is { } t
             && GhostTexturePaths.TryGetValue(t, out var path))
         {
             _ghostTile.Texture = ResourceLoader.Load<Texture2D>(path);
-            // 進入 MapExpand 即用當前游標位置擺放 ghost，避免「先看到角落 ghost 才跳到滑鼠」
-            var mousePos = GetLocalMousePosition();
-            _ghostTile.Position = new Vector2(mousePos.X - GhostSize / 2f, mousePos.Y - GhostSize / 2f);
+            // 立即用全域 mouse 位置擺放，避免進 MapExpand 瞬間 ghost 從 (0,0) 跳出
+            var globalMouse = GetViewport().GetMousePosition();
+            _ghostTile.Position = new Vector2(globalMouse.X - GhostSize / 2f, globalMouse.Y - GhostSize / 2f);
+        }
+    }
+
+    /// <summary>
+    /// v1.12 — ghost 持續跟隨「全域」滑鼠位置（GetViewport().GetMousePosition）；
+    /// 因為寄生於頂層 CanvasLayer，可跨主地圖 / 右側面板 / 小地圖等任何區域。
+    /// </summary>
+    public override void _Process(double delta)
+    {
+        if (_ghostTile is { Visible: true })
+        {
+            var globalMouse = GetViewport().GetMousePosition();
+            _ghostTile.Position = new Vector2(globalMouse.X - GhostSize / 2f, globalMouse.Y - GhostSize / 2f);
         }
     }
 
@@ -856,12 +913,30 @@ public partial class MainMapRenderer : Control
                 if (_worldMap.IsLegalPlacement(row, col))
                 {
                     _worldMap.TryPlaceHeldTile(row, col);
+                    // v1.12 Stage 6：組進行中 → 顯示剩餘進度
+                    var state2 = _worldMap.BackingState;
+                    if (state2 is not null && state2.PendingGroupRemaining > 0 && _worldMap.HeldTileId is not null)
+                    {
+                        var tile = _worldMap.BackingModule?.Tiles[_worldMap.HeldTileId];
+                        int total = tile?.GroupCount ?? 1;
+                        int placed = total - state2.PendingGroupRemaining;
+                        AppendLog($"地塊組進度 {placed}/{total} — 請繼續放下一格（與已放格相鄰）。");
+                    }
                 }
                 else
                 {
-                    // 點擊不合法地塊 → 取消放置（與右鍵相同行為）
-                    _worldMap.CancelMapExpand();
-                    AppendLog($"已取消放置（點擊 ({row},{col}) 不在合法區）。");
+                    // v1.12 Stage 6：組進行中時誤點 → 不要 rollback（防誤觸）；只記日誌
+                    var state3 = _worldMap.BackingState;
+                    if (state3 is not null && state3.PendingGroupCells.Count > 0)
+                    {
+                        AppendLog($"({row},{col}) 不在組相鄰範圍；繼續從同組已放格旁挑格，或按右鍵取消整組。");
+                    }
+                    else
+                    {
+                        // 一般單格放置誤點 → 取消（保留既有行為）
+                        _worldMap.CancelMapExpand();
+                        AppendLog($"已取消放置（點擊 ({row},{col}) 不在合法區）。");
+                    }
                 }
                 break;
 
@@ -1031,7 +1106,8 @@ public partial class MainMapRenderer : Control
         var (pr, pc) = _worldMap.PlayerPos;
         var start = new CardNarrative.Core.State.Position(pc, pr);
         var goal = new CardNarrative.Core.State.Position(col, row);
-        var path = _pathFinding.FindPath(state, start, goal);
+        // v1.12 Stage 8：傳 module 讓 BFS 套用 tag 相容檢查
+        var path = _pathFinding.FindPath(state, start, goal, _worldMap.BackingModule);
         if (path.Count == 0)
         {
             _pathPreview.Clear();
@@ -1076,12 +1152,13 @@ public partial class MainMapRenderer : Control
         }
 
         // state-mode：BFS 路徑規劃（TileMap key 是 (X=col, Y=row)）
+        // v1.12 Stage 8：傳 module 讓 BFS 套用 tag 相容檢查（跨區強制走橋接 tile）
         var start = state.CurrentPlayer.Position;
         var goal = new CardNarrative.Core.State.Position(col, row);
-        var path = _pathFinding.FindPath(state, start, goal);
+        var path = _pathFinding.FindPath(state, start, goal, _worldMap.BackingModule);
         if (path.Count == 0)
         {
-            AppendLog($"({row},{col}) 無路可達（需四方向相鄰已放置格相連）。");
+            AppendLog($"({row},{col}) 無路可達（需四方向相鄰已放置格 + tag 相容 / 經橋接 tile）。");
             return;
         }
 
@@ -1302,6 +1379,9 @@ public partial class MainMapRenderer : Control
         // v1.10：tile layout 變動後（中鍵拖曳 / Reset / camera tween）若 hover preview 仍在 → 重算座標
         if (_hoveredTile is { } cur && !_previewSuppressed)
             UpdatePathPreviewForHover(cur.Row, cur.Col);
+
+        // v1.12 Stage 7：tile quad 重排後重畫地塊組外框
+        _groupOutlineLayer?.QueueRedraw();
     }
 
     /// <summary>場景立繪：跟隨玩家所在地塊（含 camera offset 與 push-apart offset），floor 與 player tile 對齊。</summary>
@@ -1351,18 +1431,38 @@ public partial class MainMapRenderer : Control
 
     private void EmitHudSignals()
     {
-        var preview = _worldMap.NextTilePreview;
-        var previewIds = _worldMap.NextTileIdPreview;
         var module = _worldMap.BackingModule;
         string ResolveName(string? id) =>
             id is not null && module is not null && module.Tiles.TryGetValue(id, out var t) ? t.Name : "";
+        MapTerrain? ResolveTerrain(string? id) =>
+            id is not null && module is not null && module.Tiles.TryGetValue(id, out var t)
+                ? CardNarrative.Core.Map.TileVisualProfileResolver.ResolveTerrain(t)
+                : null;
 
-        var top = preview.Count > 0 ? preview[0].ToString() : "";
-        var second = preview.Count > 1 ? preview[1].ToString() : "";
-        var third = preview.Count > 2 ? preview[2].ToString() : "";
-        var topName = previewIds.Count > 0 ? ResolveName(previewIds[0]) : "";
-        var secondName = previewIds.Count > 1 ? ResolveName(previewIds[1]) : "";
-        var thirdName = previewIds.Count > 2 ? ResolveName(previewIds[2]) : "";
+        // v1.12 Stage 5：批次非空（不論 Mode）即顯示 batch；持有時 held 留在原視覺 slot（virtual slot 投影）。
+        // 來源：WorldMap.GetBatchVisualSlots() — 已包含 held 的 virtual slot 投影。
+        // 批次空時 fallback 到 TileDeck 預覽。
+        string?[] virtualSlots;
+        if (_worldMap.TileChoiceBatchIds.Count > 0 || _worldMap.HeldTileId is not null)
+        {
+            virtualSlots = _worldMap.GetBatchVisualSlots().ToArray();
+        }
+        else
+        {
+            var deckPreview = _worldMap.NextTileIdPreview;
+            virtualSlots = new string?[3];
+            for (int i = 0; i < 3 && i < deckPreview.Count; i++) virtualSlots[i] = deckPreview[i];
+        }
+
+        string FormatTerrain(string? id) =>
+            id is not null && ResolveTerrain(id) is { } t ? t.ToString() : "";
+
+        var top = FormatTerrain(virtualSlots[0]);
+        var second = FormatTerrain(virtualSlots[1]);
+        var third = FormatTerrain(virtualSlots[2]);
+        var topName = ResolveName(virtualSlots[0]);
+        var secondName = ResolveName(virtualSlots[1]);
+        var thirdName = ResolveName(virtualSlots[2]);
         var heldName = ResolveName(_worldMap.HeldTileId);
 
         EmitSignal(

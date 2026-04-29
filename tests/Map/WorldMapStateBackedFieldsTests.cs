@@ -32,8 +32,12 @@ public class WorldMapStateBackedFieldsTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: module.Prologue.StartingCompanionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
+        // v1.12 Stage 6：abandoned-mansion 含 tileBatches → TileDeck 為空。本檔測試 dispatch 仍以 TileDeck 為基準。
+        foreach (var batch in state.PendingTileBatches)
+            foreach (var id in batch) state.TileDeck.Add(id);
+        state.PendingTileBatches.Clear();
         var map = new WorldMap(state, module, new NoSubstituteRandom());
         return (module, state, map);
     }
@@ -70,20 +74,21 @@ public class WorldMapStateBackedFieldsTests
     }
 
     [Fact]
-    public void StateMode_CancelMapExpand_HeldReturnedToBatchEnd()
+    public void StateMode_CancelMapExpand_HeldReturnedToOriginalSlot()
     {
-        // v1.12 Stage 2：Cancel 改為 held 退回 TileChoiceBatch 末尾（不還回 TileDeck）。
+        // v1.12 Stage 5：Cancel 改為 held 插回原 visual slot（HeldOriginalBatchIdx），不再退末尾。
         var (_, state, map) = NewStateBackedMap();
         map.BeginMapExpand();
-        map.SelectFromBatch(0);
+        map.SelectFromBatch(1); // origIdx=1
         var heldId = state.CurrentPlayer.HeldTileId!;
         var batchCountBefore = state.TileChoiceBatch.Count;
 
         map.CancelMapExpand();
 
         state.CurrentPlayer.HeldTileId.Should().BeNull();
+        state.CurrentPlayer.HeldOriginalBatchIdx.Should().BeNull();
         state.TileChoiceBatch.Count.Should().Be(batchCountBefore + 1);
-        state.TileChoiceBatch[^1].Should().Be(heldId); // 退到末尾
+        state.TileChoiceBatch[1].Should().Be(heldId);
     }
 
     // === P1-4 · CompanionHp dispatch ===

@@ -36,8 +36,8 @@ public class Stage1RuntimeBootstrapTests
             chosenCharacterIds: new[] { heroId },
             chosenCompanionIds: companionIds,
             seed: 1234,
-            gridSize: 9,
-            startPosition: new Position(4, 4));
+            gridSize: 11,
+            startPosition: new Position(5, 5));
         return (module, state);
     }
 
@@ -56,13 +56,14 @@ public class Stage1RuntimeBootstrapTests
     }
 
     [Fact]
-    public void RuntimeBootstrap_PlacesStartingTileAt4_4()
+    public void RuntimeBootstrap_PlacesStartingTileAtCenter()
     {
+        // v1.13：grid 11×11，中心 (5,5)。
         var (_, state) = NewRuntimeState();
-        state.GridSize.Should().Be(9);
-        state.TileMap.Keys.Should().Contain((4, 4));
+        state.GridSize.Should().Be(11);
+        state.TileMap.Keys.Should().Contain((5, 5));
         state.TileMap.Keys.Should().NotContain((0, 0));
-        state.CurrentPlayer.Position.Should().Be(new Position(4, 4));
+        state.CurrentPlayer.Position.Should().Be(new Position(5, 5));
     }
 
     [Fact]

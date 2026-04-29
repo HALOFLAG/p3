@@ -17,9 +17,9 @@ namespace CardNarrative.Core.Map;
 /// </summary>
 public sealed class WorldMap
 {
-    public const int Size = 9;
-    public const int InitialPlayerRow = 4;
-    public const int InitialPlayerCol = 4;
+    public const int Size = 11;
+    public const int InitialPlayerRow = 5;
+    public const int InitialPlayerCol = 5;
     public const int ApMax = 3;
     public const int HandSizeMax = 5;
     public const int TurnLimit = 30;
@@ -139,6 +139,13 @@ public sealed class WorldMap
             return _state.TileDeck.Take(3).ToList();
         }
     }
+
+    /// <summary>
+    /// v1.12 Stage 5 — state-mode 當前批次（TileChoiceBatch）內的 tile id 順序快照；
+    /// standalone 永遠空。UI 在 MapExpand 模式下用此呈現「3 張選 1」slot。
+    /// </summary>
+    public IReadOnlyList<string> TileChoiceBatchIds =>
+        _state is null ? (IReadOnlyList<string>)Array.Empty<string>() : _state.TileChoiceBatch;
 
     private int _hp = 12;
     public int Hp
@@ -773,25 +780,202 @@ public sealed class WorldMap
         return new TileData(row, col, MapTerrain.Forest, IsPlaced: false, IsExplored: false);
     }
 
+    /// <summary>
+    /// 判定此格是否合法放置（規格書 §1.5 / §3.1.4）。
+    /// 共通：在 grid 內 + 該格未放。
+    /// v1.12 Stage 4 state-mode：若有持有 tile（HeldTileId），需與所有相鄰已放置 tile 之 tags 兩兩相容（OR 邏輯）。
+    /// v1.12 Stage 6 state-mode：地塊組進行中時（PendingGroupCells.Count>0），第 2+ 格只看「同組已放格相鄰」即可（同組共享 tile id 不需 tag 檢查）。
+    /// 持有為 null 或 standalone 時跳過 tag 檢查（fallback 既有單格行為）。
+    /// </summary>
     public bool IsLegalPlacement(int row, int col)
     {
         if (!IsInBounds(row, col)) return false;
         if (GetTile(row, col).IsPlaced) return false;
-        return HasPlacedNeighbor(row, col);
+
+        // standalone 或 module 缺：只檢查相鄰，保留 Phase 1+2 行為
+        if (_state is null || _module is null)
+        {
+            return HasPlacedNeighbor(row, col);
+        }
+
+        // v1.12 Stage 6：地塊組進行中（已放至少 1 格、尚未完成） → 與同組已放格相鄰
+        // v1.12 Stage 7：另外要符合 GroupShape（rectangle:WxH / line:N）拓撲限制
+        if (_state.PendingGroupCells.Count > 0)
+        {
+            if (!IsAdjacentToAnyGroupCell(row, col)) return false;
+            return IsCellLegalForGroupShape(row, col);
+        }
+
+        // 第 1 格 / 單格 tile：標準相鄰檢查
+        if (!HasPlacedNeighbor(row, col)) return false;
+
+        var heldId = _state.CurrentPlayer.HeldTileId;
+        if (heldId is null) return true;
+        if (!_module.Tiles.TryGetValue(heldId, out var heldTile)) return true;
+
+        return AreAllPlacedNeighborsTagCompatible(row, col, heldTile.Tags);
     }
 
+    /// <summary>v1.12 Stage 6 — 與當前進行中地塊組已放置 cell 任一個四向相鄰即視為合法（不重複格）。</summary>
+    private bool IsAdjacentToAnyGroupCell(int row, int col)
+    {
+        if (_state is null) return false;
+        foreach (var (gx, gy) in _state.PendingGroupCells)
+        {
+            if (Math.Abs(row - gy) + Math.Abs(col - gx) == 1) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// v1.12 Stage 7 — 若當前 PendingGroupTileId 對應 tile 有 <see cref="Models.Tile.GroupShape"/>，
+    /// 驗證「PendingGroupCells + 候選格」符合 shape partial（rectangle:WxH / line:N）。
+    /// 缺 shape 或無法解析 → 視為自由連通（Stage 6 既有行為）。
+    /// </summary>
+    private bool IsCellLegalForGroupShape(int row, int col)
+    {
+        if (_state is null || _module is null) return true;
+        var heldId = _state.PendingGroupTileId;
+        if (heldId is null) return true;
+        if (!_module.Tiles.TryGetValue(heldId, out var tile)) return true;
+        if (string.IsNullOrEmpty(tile.GroupShape)) return true;
+
+        // 構造 placed + candidate 的 cells 集合
+        var allCells = new List<(int X, int Y)>(_state.PendingGroupCells.Count + 1);
+        allCells.AddRange(_state.PendingGroupCells);
+        allCells.Add((col, row));
+
+        var shape = tile.GroupShape;
+        // rectangle:WxH
+        if (shape.StartsWith("rectangle:"))
+        {
+            var dims = shape.Substring("rectangle:".Length).Split('x');
+            if (dims.Length == 2
+                && int.TryParse(dims[0], out var w)
+                && int.TryParse(dims[1], out var h))
+            {
+                return IsValidRectanglePartial(allCells, w, h);
+            }
+        }
+        // line:N
+        if (shape.StartsWith("line:"))
+        {
+            if (int.TryParse(shape.Substring("line:".Length), out var n))
+            {
+                return IsValidLinePartial(allCells, n);
+            }
+        }
+        // 未知 shape → fallback 自由（不強制）
+        return true;
+    }
+
+    /// <summary>
+    /// v1.12 Stage 7 — Rectangle:WxH 的 partial 驗證：cells 的 bounding box 必須能裝入 W×H 或 H×W（任一方向）。
+    /// 不檢查格子數（由 GroupCount 控制；組未完成時 cells 數可能少於 W*H）。
+    /// </summary>
+    private static bool IsValidRectanglePartial(IReadOnlyList<(int X, int Y)> cells, int w, int h)
+    {
+        if (cells.Count == 0) return true;
+        int minX = cells[0].X, maxX = cells[0].X, minY = cells[0].Y, maxY = cells[0].Y;
+        for (int i = 1; i < cells.Count; i++)
+        {
+            if (cells[i].X < minX) minX = cells[i].X;
+            if (cells[i].X > maxX) maxX = cells[i].X;
+            if (cells[i].Y < minY) minY = cells[i].Y;
+            if (cells[i].Y > maxY) maxY = cells[i].Y;
+        }
+        int boxW = maxX - minX + 1;
+        int boxH = maxY - minY + 1;
+        // 任一方向能塞入 W×H 都算合法
+        return (boxW <= w && boxH <= h) || (boxW <= h && boxH <= w);
+    }
+
+    /// <summary>
+    /// v1.12 Stage 7 — Line:N 的 partial 驗證：cells 必須全部 X 相同（垂直）或全部 Y 相同（水平），
+    /// 且 span ≤ N。第 1 格自由通過（無方向）。
+    /// </summary>
+    private static bool IsValidLinePartial(IReadOnlyList<(int X, int Y)> cells, int n)
+    {
+        if (cells.Count <= 1) return true; // 第 1 格自由
+        bool sameX = true, sameY = true;
+        int x0 = cells[0].X, y0 = cells[0].Y;
+        for (int i = 1; i < cells.Count; i++)
+        {
+            if (cells[i].X != x0) sameX = false;
+            if (cells[i].Y != y0) sameY = false;
+        }
+        if (!sameX && !sameY) return false; // 對角線禁止
+
+        int min, max;
+        if (sameX)
+        {
+            min = cells[0].Y; max = cells[0].Y;
+            for (int i = 1; i < cells.Count; i++) { if (cells[i].Y < min) min = cells[i].Y; if (cells[i].Y > max) max = cells[i].Y; }
+        }
+        else
+        {
+            min = cells[0].X; max = cells[0].X;
+            for (int i = 1; i < cells.Count; i++) { if (cells[i].X < min) min = cells[i].X; if (cells[i].X > max) max = cells[i].X; }
+        }
+        return (max - min + 1) <= n;
+    }
+
+    /// <summary>
+    /// v1.12 Stage 4 — 候選 tile.tags 與所有相鄰已放置 tile.tags 兩兩 <see cref="TagsCompatible"/>。
+    /// 任一鄰居 tag 不相容即整體拒絕（避免造成放置後出現「斷層」之邊界）。
+    /// </summary>
+    private bool AreAllPlacedNeighborsTagCompatible(int row, int col, IReadOnlyList<string> candidateTags)
+    {
+        return CheckOne(row - 1, col)
+            && CheckOne(row + 1, col)
+            && CheckOne(row, col - 1)
+            && CheckOne(row, col + 1);
+
+        bool CheckOne(int r, int c)
+        {
+            if (!IsInBounds(r, c)) return true;
+            if (!_state!.TileMap.TryGetValue((c, r), out var placed)) return true;
+            if (!_module!.Tiles.TryGetValue(placed.TileId, out var nbTile)) return true;
+            return TagsCompatible(candidateTags, nbTile.Tags);
+        }
+    }
+
+    /// <summary>
+    /// 判定相鄰格是否可移動（規格書 §3.1.4）。
+    /// 共通：在 grid 內 + 該格已放置 + 與玩家 4 方向相鄰。
+    /// v1.12 Stage 8 state-mode：玩家當前格 tags 與目標格 tags 需 <see cref="TagsCompatible"/>（OR 邏輯）；
+    /// 強制玩家走「共享 tag 之連通鏈」，跨區（如 outdoor → underground）必經橋接 tile（mansion-foyer / hidden-chamber）。
+    /// standalone 跳過 tag 檢查（fallback Phase 1+2 行為）。
+    /// </summary>
     public bool IsLegalMoveTarget(int row, int col)
     {
         if (!IsInBounds(row, col)) return false;
         if (!GetTile(row, col).IsPlaced) return false;
         var (pr, pc) = PlayerPos;
-        return Math.Abs(row - pr) + Math.Abs(col - pc) == 1;
+        if (Math.Abs(row - pr) + Math.Abs(col - pc) != 1) return false;
+
+        // standalone / 缺 module：不檢查 tag
+        if (_state is null || _module is null) return true;
+
+        // state-mode：檢查 tag 相容性
+        return AreTilesTagCompatibleAt(pr, pc, row, col);
+    }
+
+    /// <summary>v1.12 Stage 8 — 兩相鄰格之 tile.tags 是否 <see cref="TagsCompatible"/>（OR 邏輯）。</summary>
+    private bool AreTilesTagCompatibleAt(int row1, int col1, int row2, int col2)
+    {
+        if (_state is null || _module is null) return true;
+        if (!_state.TileMap.TryGetValue((col1, row1), out var p1)) return true;
+        if (!_state.TileMap.TryGetValue((col2, row2), out var p2)) return true;
+        if (!_module.Tiles.TryGetValue(p1.TileId, out var t1)) return true;
+        if (!_module.Tiles.TryGetValue(p2.TileId, out var t2)) return true;
+        return TagsCompatible(t1.Tags, t2.Tags);
     }
 
     /// <summary>
-    /// v1.12 Stage 2 — state-mode：填批次（最多 3 張）；standalone 行為不變（單張 dequeue）。
+    /// v1.12 Stage 2/3 — state-mode：填批次（最多 3 張）；standalone 行為不變（單張 dequeue）。
     /// state-mode 不再直接設定 HeldTileId — 由 UI 呼 <see cref="SelectFromBatch"/> 從批次選 1 張。
-    /// 既有批次（如先前 Cancel 留下的）會被沿用，不重新抽。
+    /// 來源優先序：(1) 既有 TileChoiceBatch（不重抽）→ (2) PendingTileBatches[0] 整組灌入 → (3) TileDeck 機械抽 3。
     /// </summary>
     public bool BeginMapExpand()
     {
@@ -806,14 +990,25 @@ public sealed class WorldMap
             var batch = _state.TileChoiceBatch;
             if (batch.Count == 0)
             {
-                int fill = Math.Min(3, _state.TileDeck.Count);
-                for (int i = 0; i < fill; i++)
+                // 優先：模組作者預先定義的批次（prologue.tileBatches）
+                if (_state.PendingTileBatches.Count > 0)
                 {
-                    batch.Add(_state.TileDeck[0]);
-                    _state.TileDeck.RemoveAt(0);
+                    var next = _state.PendingTileBatches[0];
+                    _state.PendingTileBatches.RemoveAt(0);
+                    batch.AddRange(next);
+                }
+                else
+                {
+                    // Fallback：機械抽 TileDeck 頂端 3 張
+                    int fill = Math.Min(3, _state.TileDeck.Count);
+                    for (int i = 0; i < fill; i++)
+                    {
+                        batch.Add(_state.TileDeck[0]);
+                        _state.TileDeck.RemoveAt(0);
+                    }
                 }
             }
-            if (batch.Count == 0) return false; // 牌堆與批次皆空
+            if (batch.Count == 0) return false; // 三來源皆空
         }
         Mode = InteractionMode.MapExpand;
         ModeChanged?.Invoke();
@@ -821,32 +1016,105 @@ public sealed class WorldMap
     }
 
     /// <summary>
-    /// v1.12 Stage 2 — state-mode：從批次選一張為 HeldTileId（規格書 §3.1.4）。
-    /// 若已持有：與 batch[idx] 互換（re-select），idx 位置不變、批次長度不變；
-    /// 若未持有：取 batch[idx] 為 held，並 RemoveAt(idx)（緊湊 List）。
+    /// v1.12 Stage 2/5/6 — state-mode：從「視覺 slot idx」(0-2) 選一張為 HeldTileId（規格書 §3.1.4）。
+    /// 視覺 slot 透過虛擬投影：未持有時 slot[i]=batch[i]；持有時 slot[origIdx]=held，其他 slot 對應 batch 並右移。
+    /// 操作語意：
+    ///   - 未持有 → batch.RemoveAt(slotIdx)、held=batch[slotIdx]、origIdx=slotIdx
+    ///   - 已持有且 slotIdx==origIdx → no-op（點到自己）
+    ///   - 已持有且 slotIdx!=origIdx → swap（視覺穩定：原本 held 的 slot 變回新 held；新 held 的 slot 換成舊 held）
+    /// v1.12 Stage 6：地塊組進行中時（PendingGroupCells.Count>0）禁止 re-select；玩家須完成或 Cancel 才能換卡。
+    /// 換卡後若新 held 為地塊組（GroupCount>1）則初始化 PendingGroup* 狀態。
+    /// CancelMapExpand 時 Insert held 回 origIdx 即可完整還原視覺狀態。
     /// standalone 不支援批次，永遠回 false。
     /// </summary>
-    public bool SelectFromBatch(int idx)
+    public bool SelectFromBatch(int slotIdx)
     {
         if (_state is null) return false;
         if (Mode != InteractionMode.MapExpand) return false;
-        var batch = _state.TileChoiceBatch;
-        if (idx < 0 || idx >= batch.Count) return false;
+        if (slotIdx < 0 || slotIdx > 2) return false;
 
+        // v1.12 Stage 6：組進行中 → 禁止 re-select（必須先完成或 Cancel）
+        if (_state.PendingGroupCells.Count > 0) return false;
+
+        var batch = _state.TileChoiceBatch;
         var heldId = _state.CurrentPlayer.HeldTileId;
         if (heldId is null)
         {
-            _state.CurrentPlayer.HeldTileId = batch[idx];
-            batch.RemoveAt(idx);
+            // 未持有：visual slot == real batch idx
+            if (slotIdx >= batch.Count) return false;
+            _state.CurrentPlayer.HeldTileId = batch[slotIdx];
+            batch.RemoveAt(slotIdx);
+            _state.CurrentPlayer.HeldOriginalBatchIdx = slotIdx;
         }
         else
         {
-            // re-select：互換（idx 位置保留，方便 UI slot 視覺穩定）
-            _state.CurrentPlayer.HeldTileId = batch[idx];
-            batch[idx] = heldId;
+            int origIdx = _state.CurrentPlayer.HeldOriginalBatchIdx ?? 0;
+            if (slotIdx == origIdx) return false; // 點到自己
+            // 視覺 slotIdx → real batch idx：跳過 held 占的 slot
+            int realIdx = slotIdx < origIdx ? slotIdx : slotIdx - 1;
+            if (realIdx < 0 || realIdx >= batch.Count) return false;
+            // Swap：新 held = batch[realIdx]；batch[realIdx] = 舊 held
+            _state.CurrentPlayer.HeldTileId = batch[realIdx];
+            batch[realIdx] = heldId;
+            _state.CurrentPlayer.HeldOriginalBatchIdx = slotIdx;
         }
+
+        // v1.12 Stage 6：若新 held 為地塊組（GroupCount>1）→ 初始化 PendingGroup* 狀態
+        InitGroupStateForCurrentHeld();
+
         ModeChanged?.Invoke();
         return true;
+    }
+
+    /// <summary>
+    /// v1.12 Stage 6 — 看當前 HeldTileId 的 GroupCount：>1 則初始化 PendingGroup*；==1 則清組狀態。
+    /// 不會啟動已進行中的組（PendingGroupCells.Count>0 時直接 return）。
+    /// </summary>
+    private void InitGroupStateForCurrentHeld()
+    {
+        if (_state is null || _module is null) return;
+        if (_state.PendingGroupCells.Count > 0) return; // 已進行中不重設
+        var heldId = _state.CurrentPlayer.HeldTileId;
+        if (heldId is null
+            || !_module.Tiles.TryGetValue(heldId, out var tile)
+            || tile.GroupCount <= 1)
+        {
+            // 單格 tile 或無 module 對應 → 清組狀態
+            _state.PendingGroupTileId = null;
+            _state.PendingGroupRemaining = 0;
+            _state.PendingGroupInstanceId = null;
+            return;
+        }
+        // 組合卡：初始化（流水號 + 剩餘 = GroupCount）
+        _state.PendingGroupTileId = heldId;
+        _state.PendingGroupRemaining = tile.GroupCount;
+        _state.PendingGroupInstanceId = _state.AllocateGroupInstanceId();
+    }
+
+    /// <summary>
+    /// v1.12 Stage 5 — 視覺 slot 投影：將 (TileChoiceBatch + HeldTileId + HeldOriginalBatchIdx) 投影成
+    /// 0..2 的固定 slot，每 slot 一個 tile id（或 null 表示空）。UI 用此呈現「3 張選 1」面板，slot 位置穩定。
+    /// </summary>
+    public IReadOnlyList<string?> GetBatchVisualSlots()
+    {
+        var result = new string?[3];
+        if (_state is null) return result;
+        var batch = _state.TileChoiceBatch;
+        var heldId = _state.CurrentPlayer.HeldTileId;
+        int? origIdx = _state.CurrentPlayer.HeldOriginalBatchIdx;
+        for (int i = 0; i < 3; i++)
+        {
+            if (heldId is not null && origIdx is { } o && i == o)
+            {
+                result[i] = heldId;
+            }
+            else
+            {
+                int realIdx = (heldId is not null && origIdx is { } o2 && i > o2) ? i - 1 : i;
+                result[i] = realIdx < batch.Count ? batch[realIdx] : null;
+            }
+        }
+        return result;
     }
 
     public bool TryPlaceHeldTile(int row, int col)
@@ -860,18 +1128,51 @@ public sealed class WorldMap
         {
             _tiles[row, col] = _tiles[row, col] with { Terrain = terrain, IsPlaced = true };
             _heldTile = null;
+            Mode = InteractionMode.Idle;
+            TilePlaced?.Invoke(terrain, row, col);
+            TileChanged?.Invoke(row, col);
+            ModeChanged?.Invoke();
+            return true;
         }
-        else
+
+        // state-mode
+        // state.TileMap key = (X=col, Y=row)；新 PlacedTile 預設 Level=Unknown 觸發後續 onEnter 探索
+        var heldId = _state.CurrentPlayer.HeldTileId!;
+
+        // v1.12 Stage 6：地塊組分支 — 若 PendingGroupRemaining>0，此次放置屬於組的一格
+        bool isGroupPlacement = _state.PendingGroupRemaining > 0
+                                && _state.PendingGroupTileId == heldId;
+        int? groupInstanceId = isGroupPlacement ? _state.PendingGroupInstanceId : null;
+
+        _state.TileMap[(col, row)] = new PlacedTile
         {
-            // state.TileMap key = (X=col, Y=row)；新 PlacedTile 預設 Level=Unknown 觸發後續 onEnter 探索
-            var heldId = _state.CurrentPlayer.HeldTileId!;
-            _state.TileMap[(col, row)] = new PlacedTile
+            TileId = heldId,
+            Level = ExplorationLevel.Unknown,
+            GroupInstanceId = groupInstanceId,
+        };
+
+        if (isGroupPlacement)
+        {
+            // 推進組進度
+            _state.PendingGroupCells.Add((col, row));
+            _state.PendingGroupRemaining--;
+
+            if (_state.PendingGroupRemaining > 0)
             {
-                TileId = heldId,
-                Level = ExplorationLevel.Unknown,
-            };
-            _state.CurrentPlayer.HeldTileId = null;
+                // 組未完成 — 保持 held + Mode=MapExpand，玩家繼續放下一格
+                TilePlaced?.Invoke(terrain, row, col);
+                TileChanged?.Invoke(row, col);
+                return true;
+            }
+
+            // 組完成 — 清組狀態 + 清 held + 回 Idle
+            _state.PendingGroupTileId = null;
+            _state.PendingGroupCells.Clear();
+            _state.PendingGroupInstanceId = null;
         }
+
+        _state.CurrentPlayer.HeldTileId = null;
+        _state.CurrentPlayer.HeldOriginalBatchIdx = null;
         Mode = InteractionMode.Idle;
         TilePlaced?.Invoke(terrain, row, col);
         TileChanged?.Invoke(row, col);
@@ -880,8 +1181,10 @@ public sealed class WorldMap
     }
 
     /// <summary>
-    /// v1.12 Stage 2 — state-mode：若持有則退回批次末尾（緊湊 List）；批次本身保留供下次 Begin 沿用；
-    /// standalone 行為不變（held 退回 _tileDeck 最前端）。Mode → Idle。
+    /// v1.12 Stage 2/5/6 — state-mode：若持有則 Insert 回 <see cref="PlayerState.HeldOriginalBatchIdx"/>（原格）；
+    /// 該 idx 缺失或越界時退回批次末尾。批次保留供下次 Begin 沿用；standalone 行為不變。
+    /// v1.12 Stage 6：地塊組進行中 → 把 PendingGroupCells 內已放的所有 cell 從 TileMap 移除（rollback），
+    /// 清組狀態；held 仍正常退回 batch（可繼續挑別張）。Mode → Idle。
     /// </summary>
     public void CancelMapExpand()
     {
@@ -898,12 +1201,30 @@ public sealed class WorldMap
         }
         else
         {
-            // state-mode：held（若有）退回 batch 末尾，批次保留待下次 BeginMapExpand 沿用
+            // v1.12 Stage 6：rollback 已放的同組 cells
+            if (_state.PendingGroupCells.Count > 0)
+            {
+                foreach (var (gx, gy) in _state.PendingGroupCells)
+                {
+                    _state.TileMap.Remove((gx, gy));
+                    TileChanged?.Invoke(gy, gx); // row=Y, col=X
+                }
+                _state.PendingGroupCells.Clear();
+            }
+            _state.PendingGroupTileId = null;
+            _state.PendingGroupRemaining = 0;
+            _state.PendingGroupInstanceId = null;
+
+            // state-mode：held（若有）退回原 idx，批次保留待下次 BeginMapExpand 沿用
             var heldId = _state.CurrentPlayer.HeldTileId;
             if (heldId is not null)
             {
-                _state.TileChoiceBatch.Add(heldId);
+                var batch = _state.TileChoiceBatch;
+                int origIdx = _state.CurrentPlayer.HeldOriginalBatchIdx ?? batch.Count;
+                if (origIdx < 0 || origIdx > batch.Count) origIdx = batch.Count;
+                batch.Insert(origIdx, heldId);
                 _state.CurrentPlayer.HeldTileId = null;
+                _state.CurrentPlayer.HeldOriginalBatchIdx = null;
             }
         }
         Mode = InteractionMode.Idle;

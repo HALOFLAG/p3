@@ -117,12 +117,30 @@
     "visualProfile": { "terrain": "Building" }
   },
   {
+    "id": "mansion-grand-foyer",
+    "name": "洋房大廳",
+    "terrain": "dungeon",
+    "important": true,
+    "tags": ["indoor"],
+    "copies": 1,
+    "groupCount": 4,
+    "groupShape": "rectangle:2x2",
+    "allowedActionTypes": ["exploration", "thinking"],
+    "resources": [
+      { "key": "clue", "name": "線索碎片", "perVisit": 1 }
+    ],
+    "onEnter": [],
+    "visualProfile": { "terrain": "Building" }
+  },
+  {
     "id": "grand-hallway",
     "name": "主大廳長廊",
     "terrain": "dungeon",
     "important": false,
     "tags": ["indoor"],
-    "copies": 2,
+    "copies": 1,
+    "groupCount": 2,
+    "groupShape": "line:2",
     "allowedActionTypes": ["exploration", "thinking"],
     "resources": [
       { "key": "clue", "name": "線索碎片", "perVisit": 1 }
