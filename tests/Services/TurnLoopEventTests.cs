@@ -1,3 +1,5 @@
+// S6: EventScheduler 已標 obsolete；測試自身保留以驗證舊 TurnLoop 路徑行為。
+#pragma warning disable CS0618
 using CardNarrative.Core.Services;
 using CardNarrative.Core.State;
 using FluentAssertions;

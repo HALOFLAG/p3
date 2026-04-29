@@ -237,6 +237,31 @@ public sealed class GameState
     public Dictionary<string, int> ActionCardUsesThisEvent { get; } = new();
     public List<string> PendingEventQueue { get; } = new();
 
+    /// <summary>
+    /// Phase 3 任務 14（S2）· 玩家動作累計次數。EventBroker.OnPlayerAction(kind) 入口 +1；
+    /// PlayerActionTrigger.Count 條件比對此 dict（kind 缺省值視為 0）。
+    /// 跨大回合保留（不重置）；S3 起 JsonLogic context 對外曝為 action.&lt;kind&gt;.count。
+    /// 序列化採 enum-as-string（PlayerActionKind 已掛 JsonStringEnumConverter）；
+    /// 舊存檔反序列化時欄位缺失 fallback 為空 dict。
+    /// </summary>
+    public Dictionary<PlayerActionKind, int> ActionCounts { get; } = new();
+
+    /// <summary>
+    /// Phase 3 任務 14（S3）· 玩家持有的「情報（Intel）」集合。
+    /// 由 grantIntel effect 寫入；JsonLogic context 對外曝為 hasIntel.&lt;id&gt;。
+    /// S4 階段 TileDeckService 將讀此 set 過濾「需先取得情報才能放置」的 tag tile。
+    /// 舊存檔反序列化時欄位缺失 fallback 為空集合。
+    /// </summary>
+    public HashSet<string> AcquiredIntel { get; } = new();
+
+    /// <summary>
+    /// Phase 3 任務 14（S3）· 已結算事件的結果分級記錄。
+    /// EventResolver.Resolve 結算後寫入；JsonLogic context 對外曝為 event.&lt;id&gt;.outcome（"success" / "partialSuccess" / "failure"）。
+    /// 與 <see cref="ConsumedEventIds"/> 並行：consumed 記是否消費過、outcomes 記具體結果。
+    /// 舊存檔反序列化時欄位缺失 fallback 為空 dict。
+    /// </summary>
+    public Dictionary<string, Services.EventOutcomeTier> EventOutcomes { get; } = new();
+
     /// <summary>A3 · 擲骰加值待生效清單（由 Companion BonusRoll specialty 產生，
     /// 於 PlayCard / EventResolver.Resolve 時納入 total，NextRoll 持續時間用一次後清除）。</summary>
     public List<Services.PendingRollBonus> PendingRollBonuses { get; } = new();

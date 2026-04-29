@@ -1,11 +1,18 @@
 // EventResolver — 事件檢定結算：擲骰 + Stat + 裝備加值 vs 最終 TN（含地塊修正/climax）。
 // Tier：Success / PartialSuccess（差 1~2） / Failure；套對應 EventOutcome.Effects。
 // 由 UI（EventResolutionViewModel）或 TurnLoop 呼叫；EffectHandler 套用後續效果。
+using System.Text.Json.Serialization;
 using CardNarrative.Core.Models;
 using CardNarrative.Core.State;
 
 namespace CardNarrative.Core.Services;
 
+/// <summary>
+/// 事件結算分級。Phase 3 任務 14（S8）起掛 <see cref="JsonStringEnumConverter"/>，
+/// 序列化為 "success" / "partialSuccess" / "failure"，與 JsonLogic context
+/// event.&lt;id&gt;.outcome 字串值一致；後續 SaveService 載入舊存檔時 enum 增值不破檔。
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum EventOutcomeTier
 {
     Success,
@@ -98,6 +105,8 @@ public sealed class EventResolver
             player.Contributions++;
 
         state.ConsumedEventIds.Add(card.Id);
+        // Phase 3 任務 14（S3）· 同步寫結果分級給 JsonLogic 條件 (event.<id>.outcome) 用。
+        state.EventOutcomes[card.Id] = tier;
 
         // A3 · OnEventResolved 觸發 Specialty（例：結束後續發效果）+ 清理 ThisEvent bonus
         _companionAbilities?.Fire(SpecialtyTrigger.OnEventResolved, state, module, card);

@@ -42,5 +42,9 @@
     ["hidden-chamber", "basement-entry"],
     ["underground-passage", "damp-stone-stairs"],
     ["damp-stone-stairs", "damp-stone-stairs", "ritual-hall"]
+  ],
+  "eventPriorities": [
+    "storm-investigation",
+    "study-collapse"
   ]
 }

@@ -48,6 +48,11 @@ public sealed class EffectHandler : IEffectHandler
             case GrantEquipmentEffect ge:
                 ApplyGrantEquipment(ge, state, module);
                 break;
+            case GrantIntelEffect gi:
+                // Phase 3 任務 14（S4）· 取得情報。
+                // 只記入集合；UnlocksTags 由 TileDeckService 在判斷可放置候選格時動態查 module.Intel。
+                state.AcquiredIntel.Add(gi.Id);
+                break;
             case TransformTileEffect tt:
                 ApplyTransformTile(tt, state, module);
                 break;

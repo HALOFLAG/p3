@@ -130,4 +130,34 @@ public class EventResolverTests
 
         state.CurrentPlayer.Contributions.Should().Be(before);
     }
+
+    // Phase 3 任務 14（S3）· EventResolver 應同步寫 state.EventOutcomes，給 JsonLogic
+    // event.<id>.outcome 條件用。三 tier 各驗一次。
+    [Fact]
+    public void Resolve_WritesEventOutcomesTier_OnSuccess()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        var dice = new FakeDiceService(new RollResult(6, 6));
+        var resolver = new EventResolver(dice, new EffectHandler());
+
+        resolver.Resolve(Event(tn: 10), state, module);
+
+        state.EventOutcomes.Should().ContainKey("test-event")
+            .WhoseValue.Should().Be(EventOutcomeTier.Success);
+    }
+
+    [Fact]
+    public void Resolve_WritesEventOutcomesTier_OnFailure()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        var dice = new FakeDiceService(new RollResult(1, 1));
+        var resolver = new EventResolver(dice, new EffectHandler());
+
+        resolver.Resolve(Event(tn: 20), state, module);
+
+        state.EventOutcomes.Should().ContainKey("test-event")
+            .WhoseValue.Should().Be(EventOutcomeTier.Failure);
+    }
 }

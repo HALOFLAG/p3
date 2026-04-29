@@ -133,4 +133,91 @@ public class JsonLogicContextBuilderTests
         ctx.Variables.Should().NotContainKey("currentTile.row");
         ctx.Variables["companion.count"]!.GetValue<int>().Should().Be(0);
     }
+
+    // ─── Phase 3 任務 14（S3）擴充變數 ────────────────────────
+
+    [Fact]
+    public void HeroHpMaxAndRatioExposed()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        // 強制 HP = 半血以驗 ratio
+        state.CurrentPlayer.Hp = state.CurrentPlayer.HpMax / 2;
+
+        var ctx = JsonLogicContextBuilder.FromGameState(state, module);
+
+        ctx.Variables.Should().ContainKey("hero.hpMax");
+        ctx.Variables["hero.hpMax"]!.GetValue<int>().Should().Be(state.CurrentPlayer.HpMax);
+        ctx.Variables.Should().ContainKey("hero.hpRatio");
+        ctx.Variables["hero.hpRatio"]!.GetValue<double>().Should().BeApproximately(0.5, 0.05);
+    }
+
+    [Fact]
+    public void EventConsumedAndOutcomeExposed()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        state.ConsumedEventIds.Add("warehouse-investigation");
+        state.EventOutcomes["warehouse-investigation"] = EventOutcomeTier.PartialSuccess;
+
+        var ctx = JsonLogicContextBuilder.FromGameState(state, module);
+
+        ctx.Variables["event.warehouse-investigation.consumed"]!.GetValue<bool>().Should().BeTrue();
+        ctx.Variables["event.warehouse-investigation.outcome"]!.GetValue<string>().Should().Be("partialSuccess");
+    }
+
+    [Fact]
+    public void HasEquipmentExposed_FromBackpackAndEquipped()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        state.CurrentPlayer.Backpack.Add("torch");
+        state.CurrentPlayer.Equipment[EquipmentSlot.Hand] = "rope";
+
+        var ctx = JsonLogicContextBuilder.FromGameState(state, module);
+
+        ctx.Variables["hasEquipment.torch"]!.GetValue<bool>().Should().BeTrue();
+        ctx.Variables["hasEquipment.rope"]!.GetValue<bool>().Should().BeTrue();
+        ctx.Variables.Should().NotContainKey("hasEquipment.nonexistent");
+    }
+
+    [Fact]
+    public void HasIntelExposed()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        state.AcquiredIntel.Add("underground-passage");
+
+        var ctx = JsonLogicContextBuilder.FromGameState(state, module);
+
+        ctx.Variables["hasIntel.underground-passage"]!.GetValue<bool>().Should().BeTrue();
+        ctx.Variables.Should().NotContainKey("hasIntel.nonexistent");
+    }
+
+    [Fact]
+    public void TilePlacedById_IsTrueForStartingTile()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        var startTileId = state.TileMap[(0, 0)].TileId;
+
+        var ctx = JsonLogicContextBuilder.FromGameState(state, module);
+
+        ctx.Variables[$"tilePlaced.{startTileId}"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
+    public void ActionCountsExposed_LowercaseFirstLetter()
+    {
+        var module = ModuleFactory.Load();
+        var state = ModuleFactory.NewState(module);
+        state.ActionCounts[PlayerActionKind.Move] = 3;
+        state.ActionCounts[PlayerActionKind.Observe] = 2;
+
+        var ctx = JsonLogicContextBuilder.FromGameState(state, module);
+
+        ctx.Variables["action.move.count"]!.GetValue<int>().Should().Be(3);
+        ctx.Variables["action.observe.count"]!.GetValue<int>().Should().Be(2);
+        ctx.Variables.Should().NotContainKey("action.rest.count");
+    }
 }

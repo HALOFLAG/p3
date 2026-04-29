@@ -12,7 +12,9 @@ using CardNarrative.Core.State;
 
 // TurnLoop still references TurnPhase.Move so legacy saves flow through the
 // same code path as Action without a special-case branch; see DoDraw/Advance.
-#pragma warning disable CS0618 // TurnPhase.Move is obsolete
+// Phase 3 任務 14（S6）起 EventScheduler 已標 obsolete；TurnLoop 暫時保留依賴
+// 直到全測遷移至 EventBroker；S7+ 起再評估是否拆除此 fallback 路徑。
+#pragma warning disable CS0618 // TurnPhase.Move + EventScheduler are obsolete
 
 namespace CardNarrative.Core.Services;
 

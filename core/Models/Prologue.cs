@@ -45,4 +45,13 @@ public sealed record Prologue(
     /// </summary>
     public IReadOnlyList<IReadOnlyList<string>> TileBatches { get; init; }
         = System.Array.Empty<IReadOnlyList<string>>();
+
+    /// <summary>
+    /// Phase 3 任務 14（S5）· 同時命中多事件時的處理順序（規格書 §1.6）。
+    /// 清單前面的 event id 先觸發；未列入者依 module 載入序作 fallback。
+    /// 用於解決同一 trigger（例：tileEnter 同地塊）有多張事件時的「誰先彈」決策。
+    /// 缺欄位 / 空陣列 = 全用 module 載入序。
+    /// 載入時 ModuleLoader 驗證：每個 id 必須存在於 events.json（partial 列表允許）。
+    /// </summary>
+    public IReadOnlyList<string> EventPriorities { get; init; } = System.Array.Empty<string>();
 }

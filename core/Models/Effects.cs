@@ -11,6 +11,7 @@ namespace CardNarrative.Core.Models;
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(SetFlagEffect),             "setFlag")]
 [JsonDerivedType(typeof(GrantEquipmentEffect),      "grantEquipment")]
+[JsonDerivedType(typeof(GrantIntelEffect),          "grantIntel")]
 [JsonDerivedType(typeof(GrantResourceEffect),       "grantResource")]
 [JsonDerivedType(typeof(TileProgressEffect),        "tileProgress")]
 [JsonDerivedType(typeof(TriggerBattleEffect),       "triggerBattle")]
@@ -23,6 +24,13 @@ public abstract record EffectBase;
 
 public sealed record SetFlagEffect(string Key, JsonElement Value) : EffectBase;
 public sealed record GrantEquipmentEffect(string Id) : EffectBase;
+
+/// <summary>
+/// Phase 3 任務 14（S4）· 取得情報效果（A5）。寫 GameState.AcquiredIntel；
+/// 後續 JsonLogic 條件 hasIntel.&lt;id&gt; 即可命中；若情報含 UnlocksTags 則對應 tag 的 tile 可被放置。
+/// </summary>
+public sealed record GrantIntelEffect(string Id) : EffectBase;
+
 public sealed record GrantResourceEffect(string Key, int Amount) : EffectBase;
 public sealed record TileProgressEffect(int Delta) : EffectBase;
 public sealed record TriggerBattleEffect(string BattleId) : EffectBase;

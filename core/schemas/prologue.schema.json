@@ -90,6 +90,11 @@
         "minItems": 1,
         "maxItems": 3
       }
+    },
+    "eventPriorities": {
+      "description": "Phase 3 任務 14（S5）：同時命中多事件時的處理順序。清單前面的 event id 先觸發；未列入者依 module 載入序作 fallback。",
+      "type": "array",
+      "items": { "type": "string" }
     }
   },
   "$defs": {

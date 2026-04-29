@@ -31,6 +31,8 @@ public partial class OrbitPanel : GridContainer
     public delegate void EventCardClickedEventHandler(string eventId);
 
     private EventOrbit? _orbit;
+    /// <summary>S7：OrbitProjection 提供 HintFor 模板（hover tooltip 用）；null 時 fallback 不顯示 tooltip。</summary>
+    private OrbitProjection? _projection;
     private readonly OrbitCardView[] _slots = new OrbitCardView[SlotCount];
     private Button? _expandButton;
     private AcceptDialog? _expandDialog;
@@ -87,6 +89,13 @@ public partial class OrbitPanel : GridContainer
         Refresh();
     }
 
+    /// <summary>S7：MainBootstrap 注入 OrbitProjection 供 hover tooltip 使用。</summary>
+    public void SetProjection(OrbitProjection projection)
+    {
+        _projection = projection;
+        Refresh();
+    }
+
     private void OnCoreOrbitChanged()
     {
         // Core 可能於背景執行緒呼叫；CallDeferred 確保 redraw 在主執行緒
@@ -123,7 +132,11 @@ public partial class OrbitPanel : GridContainer
         for (int i = 0; i < SlotCount; i++)
         {
             if (i < visible.Count)
-                _slots[i].SetEvent(visible[i]);
+            {
+                var inst = visible[i];
+                var hint = _projection?.HintFor(inst.Card);
+                _slots[i].SetEvent(inst, hint);
+            }
             else
                 _slots[i].SetEmpty();
         }
@@ -182,7 +195,8 @@ public partial class OrbitPanel : GridContainer
             {
                 var card = new OrbitCardView();
                 _expandGrid.AddChild(card);
-                card.SetEvent(inst);
+                var hint = _projection?.HintFor(inst.Card);
+                card.SetEvent(inst, hint);
             }
         }
 

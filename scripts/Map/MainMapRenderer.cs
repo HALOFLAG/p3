@@ -68,7 +68,17 @@ public partial class MainMapRenderer : Control
     private readonly IDiceService _dice = new SeededDiceService(seed: Random.Shared.Next());
     private readonly DiceServiceRollProvider _rollProvider;
 
+    // Phase 3 任務 14（S2）· EventBroker 由 MainBootstrap 注入；玩家動作事件在此 fire。
+    private EventBroker? _eventBroker;
+
     public WorldMap WorldMap => _worldMap;
+
+    /// <summary>
+    /// Phase 3 任務 14（S2）· 注入事件觸發層。
+    /// 注入後：移動 / 休息 / 觀察 / 對話 等動作會呼 <see cref="EventBroker.OnPlayerAction"/>；
+    /// AdvanceTurn 後會呼 <see cref="EventBroker.OnActionPhaseBegin"/>。
+    /// </summary>
+    public void SetEventBroker(EventBroker broker) => _eventBroker = broker;
 
     /// <summary>
     /// Phase 2 任務 11 Stage 3.4：把當前 WorldMap 換成 state-backed instance。
@@ -506,14 +516,11 @@ public partial class MainMapRenderer : Control
             AppendLog("目前不是待命狀態，無法抽地塊。");
             return;
         }
-        if (_worldMap.RemainingTiles == 0 && _worldMap.TileChoiceBatchIds.Count == 0)
-        {
-            AppendLog("牌堆已空。");
-            return;
-        }
+        // v1.12 修：BeginMapExpand 內部已檢查三來源（TileChoiceBatch / PendingTileBatches / TileDeck），
+        // 直接信賴它的回傳值；移除舊版只看 TileDeck + TileChoiceBatch 的 pre-check（會誤判 tileBatches 模式為「牌堆已空」）。
         if (!_worldMap.BeginMapExpand())
         {
-            AppendLog("無法抽地塊（牌堆空或狀態不符）。");
+            AppendLog("無法抽地塊（牌堆 / 批次皆空，或狀態不符）。");
             return;
         }
         // v1.12 Stage 5 — 進 MapExpand 模式後 batch 已填，玩家從 RightPanel slot 點選 1 張
@@ -631,6 +638,9 @@ public partial class MainMapRenderer : Control
         AppendLog($"—— 結束第 {_worldMap.Turn} 回合 ——");
         _worldMap.AdvanceTurn();
         AppendLog($"—— 第 {_worldMap.Turn} 回合 開始（Draw：AP {_worldMap.Ap}/{WorldMap.ApMax}，手牌補至 {_worldMap.HandSize}/{WorldMap.HandSizeMax}）——");
+        // Phase 3 任務 14（S2）· 行動階段開始觸發 turnAt / turnRange 事件。
+        // 注：簡化版 UI 沒有獨立 Action phase 切換步驟；AdvanceTurn 後直接視為「下一回合行動階段已開始」。
+        _eventBroker?.OnActionPhaseBegin(_worldMap.Turn);
     }
 
     // === Spawn / subscribe ===
@@ -806,6 +816,10 @@ public partial class MainMapRenderer : Control
         // log 由 AttemptMove 統一處理（含 AP 消耗）→ 此處只更新 UI
         EmitSignal(SignalName.PlayerPositionChanged, newRow, newCol);
         AnimateCameraToPlayer(oldRow, oldCol, newRow, newCol);
+        // Phase 3 任務 14（S2）· playerAction 觸發點 — 在 PlayerPositionChanged signal 發出後再 fire，
+        //                          確保 MainBootstrap.OnPlayerEnteredTileForBroker（tileEnter）先 enqueue。
+        // 順序：tileEnter（Bootstrap 端）→ PlayerAction(Move)（此處）→ 兩者都 enqueue / open dialog 由 broker 排程。
+        _eventBroker?.OnPlayerAction(PlayerActionKind.Move);
         // v1.10：移動進行中 suppressed → 不重算 overlay（避免逐格收縮殘影）
         // 走完後 ExecutePendingPath 末尾會解鎖 + 主動重算
         if (_previewSuppressed) return;
@@ -1014,6 +1028,8 @@ public partial class MainMapRenderer : Control
         }
         var result = _worldMap.Rest();
         AppendLog($"休息：消耗 {result.ApSpent} AP → 回 {result.HpGained} HP（{_worldMap.Hp}/{_worldMap.HpMax}）");
+        // Phase 3 任務 14（S2）· playerAction 觸發點
+        _eventBroker?.OnPlayerAction(PlayerActionKind.Rest);
     }
 
     private void OnObserveSelected()
@@ -1037,9 +1053,16 @@ public partial class MainMapRenderer : Control
         AppendLog(
             $"觀察（{costStr}）：2d6({r.D1 + r.D2})+Skill({r.SkillBonus}) = {total} vs TN={r.Tn} → "
             + (r.Success ? "成功" : "失敗") + marker);
+        // Phase 3 任務 14（S2）· playerAction 觸發點（"explore" = Observe）
+        _eventBroker?.OnPlayerAction(PlayerActionKind.Observe);
     }
 
-    private void OnTalkSelected() => AppendLog("對話：這個地塊沒有可對話對象。");
+    private void OnTalkSelected()
+    {
+        AppendLog("對話：這個地塊沒有可對話對象。");
+        // Phase 3 任務 14（S2）· 即使是 stub 也 fire 動作；玩家可用 playerAction.kind=talk 觸發事件
+        _eventBroker?.OnPlayerAction(PlayerActionKind.Talk);
+    }
 
     /// <summary>v1.11 — 進入預覽模式（第一次 click 地塊觸發）。立即顯示路徑 + cursor 跟隨。</summary>
     private void EnterPreviewMode(int row, int col)
@@ -1441,7 +1464,7 @@ public partial class MainMapRenderer : Control
 
         // v1.12 Stage 5：批次非空（不論 Mode）即顯示 batch；持有時 held 留在原視覺 slot（virtual slot 投影）。
         // 來源：WorldMap.GetBatchVisualSlots() — 已包含 held 的 virtual slot 投影。
-        // 批次空時 fallback 到 TileDeck 預覽。
+        // Idle + 批次空時 fallback 順序：(1) PendingTileBatches[0] 預覽下一組 → (2) TileDeck 機械抽 3。
         string?[] virtualSlots;
         if (_worldMap.TileChoiceBatchIds.Count > 0 || _worldMap.HeldTileId is not null)
         {
@@ -1449,9 +1472,20 @@ public partial class MainMapRenderer : Control
         }
         else
         {
-            var deckPreview = _worldMap.NextTileIdPreview;
             virtualSlots = new string?[3];
-            for (int i = 0; i < 3 && i < deckPreview.Count; i++) virtualSlots[i] = deckPreview[i];
+            // v1.12 修：先看 PendingTileBatches[0] 給 idle 預覽（tileBatches 模式 TileDeck 為空，
+            // 否則 RightPanel 會永遠顯示 — — — 玩家以為沒卡）；其次才 fallback TileDeck。
+            var state = _worldMap.BackingState;
+            if (state is not null && state.PendingTileBatches.Count > 0)
+            {
+                var nextBatch = state.PendingTileBatches[0];
+                for (int i = 0; i < 3 && i < nextBatch.Count; i++) virtualSlots[i] = nextBatch[i];
+            }
+            else
+            {
+                var deckPreview = _worldMap.NextTileIdPreview;
+                for (int i = 0; i < 3 && i < deckPreview.Count; i++) virtualSlots[i] = deckPreview[i];
+            }
         }
 
         string FormatTerrain(string? id) =>

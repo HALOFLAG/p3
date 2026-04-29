@@ -11,6 +11,8 @@
       "name": { "type": "string" },
       "type": { "enum": ["exploration", "negotiation", "battle", "special"] },
       "tn": { "type": "integer" },
+      "tags": { "type": "array", "items": { "type": "string" } },
+      "revealCondition": { "type": "object" },
       "trigger": {
         "oneOf": [
           { "type": "object", "required": ["type", "tileId"],
@@ -18,6 +20,23 @@
             "additionalProperties": false },
           { "type": "object", "required": ["type", "key", "value"],
             "properties": { "type": { "const": "flag" }, "key": { "type": "string" }, "value": {} },
+            "additionalProperties": false },
+          { "type": "object", "required": ["type", "round"],
+            "properties": { "type": { "const": "turnAt" }, "round": { "type": "integer", "minimum": 1 } },
+            "additionalProperties": false },
+          { "type": "object", "required": ["type", "from"],
+            "properties": {
+              "type": { "const": "turnRange" },
+              "from": { "type": "integer", "minimum": 1 },
+              "to":   { "type": ["integer", "null"], "minimum": 1 }
+            },
+            "additionalProperties": false },
+          { "type": "object", "required": ["type", "kind"],
+            "properties": {
+              "type": { "const": "playerAction" },
+              "kind": { "enum": ["move", "rest", "observe", "talk", "playCard", "mulligan", "focus", "scout", "collectResource", "investClue", "swapEquipment", "interact"] },
+              "count": { "type": ["integer", "null"], "minimum": 1 }
+            },
             "additionalProperties": false },
           { "type": "object", "required": ["type", "interval"],
             "properties": { "type": { "const": "turnTimer" }, "interval": { "type": "integer", "minimum": 1 } },
@@ -60,6 +79,9 @@
           "additionalProperties": false },
         { "type": "object", "required": ["type", "id"],
           "properties": { "type": { "const": "grantEquipment" }, "id": { "type": "string" } },
+          "additionalProperties": false },
+        { "type": "object", "required": ["type", "id"],
+          "properties": { "type": { "const": "grantIntel" }, "id": { "type": "string" } },
           "additionalProperties": false },
         { "type": "object", "required": ["type", "key", "amount"],
           "properties": { "type": { "const": "grantResource" }, "key": { "type": "string" }, "amount": { "type": "integer" } },

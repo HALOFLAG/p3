@@ -13,8 +13,11 @@ namespace HauntedManor.Scripts;
 /// <summary>
 /// 主場景控制器：套用 Theme + 把 MainMapRenderer 的 Signal 接到 TopBar / LeftPanel / RightPanel。
 /// 額外負責：對話框顯示時提供全螢幕 modal overlay（取代被 Window clip 掉的 shadow）。
+///
+/// Phase 3 任務 14（S1）：實作 <see cref="IEventBrokerSink"/> — EventBroker 命中 tileEnter 事件後
+/// 由此處 Open 結算對話框。OnEventResolved 收尾時寫 ConsumedEventIds 阻止重複觸發。
 /// </summary>
-public partial class MainBootstrap : Control
+public partial class MainBootstrap : Control, IEventBrokerSink
 {
     private ColorRect? _modalOverlay;
     private ConfirmationDialog? _playCardConfirm;
@@ -28,13 +31,19 @@ public partial class MainBootstrap : Control
     private EventOrbitResolver? _orbitResolver;
     private OrbitPanel? _orbitPanel;
     private EventResolutionDialog? _eventDialog;
+    // Phase 3 任務 14 · 事件觸發層（S1：tileEnter；S2 起接通 turn / playerAction 入口）
+    private EventBroker? _broker;
+    // Phase 3 任務 14（S7）· ORBIT 提示層（純讀；依 RevealCondition + Trigger 動態升降 Class + 提供 hover tooltip）
+    private OrbitProjection? _projection;
     private CardNarrative.Core.Models.Module? _module;
     // Task 11 Stage 1：runtime GameState（v1.13 起 gridSize=11, startPosition=(5,5)；前 v1.12 為 9/(4,4)）；
     // Stage 1 僅儲存參照供 Stage 2 façade 使用，本 stage WorldMap 仍是 authoritative。
     private CardNarrative.Core.State.GameState? _gameState;
     // Task 11 Stage 5：tile-side transformations 索引（事件 trigger 後 O(R) 查找）
     private CardNarrative.Core.Map.TileTransformRegistry? _tileTransformRegistry;
-    private readonly System.Random _orbitDemoRng = new();
+    // 舊名 _orbitDemoRng；S6 起 ORBIT 不再用 demo random 升 ClassA，
+    // 此 RNG 僅留給 BattleEngine 的 SeededDiceService 取 seed 用（line 208 附近）。
+    private readonly System.Random _battleDiceSeedRng = new();
 
     // Task 12 Stage 3：訊息氣泡系統（規格書 §1.9）
     private MessageBubbleService? _messageBubbles;
@@ -205,14 +214,14 @@ public partial class MainBootstrap : Control
         // === Task 13 Stage 1 · 戰鬥子場景（規格書 §1.8 + §4.5）===
         // BattleEngine 用簡單 RandomDice（與 GameState 共用 seed 留 Stage 2 強化）；
         // BattleScene 是 AcceptDialog overlay，動態建構不依賴 .tscn。
-        _battleEngine = new BattleEngine(new SeededDiceService(_orbitDemoRng.Next()));
+        _battleEngine = new BattleEngine(new SeededDiceService(_battleDiceSeedRng.Next()));
         _battleScene = new HauntedManor.Scripts.Battle.BattleScene { Name = "BattleScene" };
         AddChild(_battleScene);
         _battleScene.BattleClosed += OnBattleClosed;
 
-        // === Task 9 Part A · 玩家移動 → 隨機晉升 1 張 ClassC → ClassA（模擬 tile-enter 觸發）===
-        // mainMap 在更上方已 null 檢查並 return，此處保證非 null
-        mainMap.PlayerPositionChanged += (_, _) => PromoteRandomEventToClassA();
+        // S6: 舊 demo「玩家移動 → 隨機升 1 張 ClassC → ClassA」已移除。
+        // 真正的事件揭露 / 觸發已由 EventBroker 負責（S1+S2+S3+S5）；
+        // ORBIT 卡片 Class 顯示交給 S7 OrbitProjection 動態計算。
 
         // === HandDock 接線 ===
         if (handDock != null)
@@ -252,13 +261,31 @@ public partial class MainBootstrap : Control
         {
             mainMap.SwapWorldMap(new CardNarrative.Core.Map.WorldMap(_gameState, _module));
             GD.Print("[MainBootstrap] WorldMap 已切換為 state-backed（GameState 為唯一 SoT）。");
+
+            // === Phase 3 任務 14（S1+S2）· 注入 EventBroker，接通三類觸發 ===
+            // S1：tileEnter — MainMapRenderer EmitSignal(PlayerPositionChanged) → 查 tileId → broker.OnTileEnter
+            // S2：playerAction — MainMapRenderer 內部各 verb handler 收尾呼 broker.OnPlayerAction
+            // S2：actionPhaseBegin — MainMapRenderer.RequestAdvanceTurn 後呼 broker.OnActionPhaseBegin
+            _broker = new EventBroker(_gameState, _module);
+            _broker.Sink = this;
+            mainMap.PlayerPositionChanged += OnPlayerEnteredTileForBroker;
+            mainMap.SetEventBroker(_broker);
+            // S7：在 broker 之後注入 OrbitProjection；refresh 時機（state 變動後）由本檔內各 hook 點驅動。
+            _projection = new OrbitProjection(_orbit!, _module, _gameState);
+            // 玩家移動後 refresh（含 turn 推進、tile 進入、行動取得情報等都會經由 broker 入口觸發）。
+            // 訂閱 PlayerPositionChanged：所有 broker 入口都在主執行緒呼叫，refresh 同步即可。
+            mainMap.PlayerPositionChanged += (_, _) => _projection?.Refresh();
+            // OrbitPanel 取得 projection 以提供 hover tooltip + 首次 refresh 把 Class 算對。
+            _orbitPanel?.SetProjection(_projection);
+            _projection.Refresh();
+            GD.Print("[MainBootstrap] EventBroker + OrbitProjection 已注入，tileEnter / playerAction / turn 觸發接通 UI。");
         }
 
         // === 載入 abandoned-mansion 模組行動卡 / 角色 / 裝備（用 _module）===
         TryLoadAbandonedMansionDeck(mainMap);
 
-        // === Task 9 demo seed：把模組前幾張事件推進 ORBIT，讓 panel 有內容可看（用 _module）===
-        TrySeedOrbitDemoEvents();
+        // === Task 14 (S6) · 把模組所有事件推進 ORBIT，全為 ClassC（依 RevealCondition 後續升降）===
+        TrySeedOrbitEvents();
 
         GD.Print("[MainBootstrap] 主場景就緒，所有 Signal 已連線。");
     }
@@ -368,25 +395,21 @@ public partial class MainBootstrap : Control
     }
 
     /// <summary>
-    /// Task 9 Part A · 把模組所有事件 register 進 ORBIT 為 ClassC（未揭露），
-    /// 預先把 2 張升 ClassA 讓 F5 立即可測試結算對話框；結局卡掛 IsEnding 旗標。
-    /// 真正的事件來源 → ORBIT register 改寫（含 EventTrigger → JsonLogic 條件翻譯）留待後續 PR。
+    /// Phase 3 任務 14（S6）· 把模組所有事件 register 進 ORBIT，全為 ClassC（未揭露）。
+    /// EventCard.RevealCondition 一併帶入 EventInstance，S7 起 OrbitProjection 將依此動態計算 Class。
+    /// 結局卡掛 IsEnding 旗標但同樣為 ClassC，後續結局條件達成時由 ORBIT 機制升至 A。
     /// </summary>
-    private void TrySeedOrbitDemoEvents()
+    private void TrySeedOrbitEvents()
     {
         if (_orbit is null || _module is null) return;
         try
         {
-            int idx = 0;
             foreach (var ev in _module.Events.Values)
             {
-                // demo：前 2 張預設 ClassA 立即可結算；其餘進 ClassC
-                var initialClass = idx < 2 ? EventOrbitClass.ClassA : EventOrbitClass.ClassC;
-                _orbit.Push(new EventInstance(ev, initialClass: initialClass));
-                idx++;
+                _orbit.Push(new EventInstance(ev, revealCondition: ev.RevealCondition));
             }
 
-            // 結局卡（ClassC，金邊；未來條件達成時升 A 觸發結局結算）
+            // 結局卡（ClassC，金邊；未來結局條件達成時升 A 觸發結局結算）
             var ending = _module.Endings.Values.FirstOrDefault();
             if (ending is not null)
             {
@@ -406,12 +429,64 @@ public partial class MainBootstrap : Control
                 _orbit.Push(new EventInstance(endingAsEvent, initialClass: EventOrbitClass.ClassC, isEnding: true));
             }
 
-            GD.Print($"[MainBootstrap] ORBIT 載入 {_orbit.Pending.Count} 個事件（含 1 結局卡）。");
+            GD.Print($"[MainBootstrap] ORBIT 載入 {_orbit.Pending.Count} 個事件（含 1 結局卡，全 ClassC；S7 起依 RevealCondition 動態升降）。");
         }
         catch (System.Exception ex)
         {
             GD.PrintErr($"[MainBootstrap] ORBIT seed 失敗：{ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Phase 3 任務 14（S1）· 玩家移動完成 → 從 GameState.TileMap 反查目的地 tileId →
+    /// 委由 EventBroker 掃描 tileEnter 事件命中。
+    /// MainMapRenderer EmitSignal(PlayerPositionChanged, newRow, newCol) 直接連到此 method。
+    /// </summary>
+    private void OnPlayerEnteredTileForBroker(int newRow, int newCol)
+    {
+        if (_broker is null || _gameState is null) return;
+        // GameState.TileMap key 為 (X=col, Y=row)；對齊 JsonLogicContextBuilder / WorldMap 慣例。
+        if (_gameState.TileMap.TryGetValue((newCol, newRow), out var placed))
+        {
+            _broker.OnTileEnter(placed.TileId);
+        }
+    }
+
+    /// <summary>
+    /// Phase 3 任務 14（S1+S2）· <see cref="IEventBrokerSink"/> 實作 — EventBroker 命中事件後呼叫。
+    /// 從 ORBIT 找既有 EventInstance（demo seed 已 push 全部事件）並升級為 ClassA；
+    /// 若不存在則 fresh 建一個並 Push（保險路徑：S6 移除 demo seed 後將是常態）。
+    /// 接著開 EventResolutionDialog；玩家結算 → OnEventResolved → 套效果 + 記 ConsumedEventIds。
+    ///
+    /// S2 加：若對話框已 Visible（前一個事件還在結算）→ 不開新對話框、改 enqueue 至 PendingEventQueue，
+    /// 由 OnEventResolved 收尾的 drain 路徑接力播放。避免「移動同時命中 tileEnter 與 playerAction(Move)」
+    /// 兩張事件互相覆蓋對話框內容。
+    /// </summary>
+    public void OnEventTriggered(EventCard card)
+    {
+        if (_eventDialog is null) return;
+        if (_eventDialog.Visible)
+        {
+            // 已有事件結算中 → enqueue 等下一輪 drain
+            if (_gameState is not null && !_gameState.PendingEventQueue.Contains(card.Id))
+            {
+                _gameState.PendingEventQueue.Add(card.Id);
+                GD.Print($"[MainBootstrap] 對話框忙碌中，事件 '{card.Id}' enqueue 至 PendingEventQueue。");
+            }
+            return;
+        }
+        EventInstance? inst = _orbit?.Pending.FirstOrDefault(i => i.Card.Id == card.Id);
+        if (inst is null)
+        {
+            inst = new EventInstance(card, initialClass: EventOrbitClass.ClassA);
+            _orbit?.Push(inst);
+        }
+        else if (inst.Class != EventOrbitClass.ClassA)
+        {
+            _orbit!.Promote(inst, EventOrbitClass.ClassA);
+        }
+        GD.Print($"[MainBootstrap] EventBroker 觸發事件：{card.Id} ({card.Name})");
+        _eventDialog.Open(inst, _mainMap?.WorldMap.Companion);
     }
 
     /// <summary>玩家點擊 ORBIT 卡 → 若是 ClassA 則打開結算對話框（B/C 無反應）。</summary>
@@ -489,10 +564,59 @@ public partial class MainBootstrap : Control
             timestamp: System.DateTime.UtcNow,
             isImportant: isImportant);
 
+        // Phase 3 任務 14（S1+S3）· 標記事件為已消費 + 寫 outcome 分級。
+        // 註：UI path 不走 EventResolver.Resolve（demo 對話框內擲骰），因此這裡手動補上
+        // 與 EventResolver.cs:100-103 等效的兩行（ConsumedEventIds.Add + EventOutcomes 寫入）。
+        if (_gameState is not null)
+        {
+            _gameState.ConsumedEventIds.Add(eventId);
+            _gameState.EventOutcomes[eventId] = tier switch
+            {
+                0 => EventOutcomeTier.Success,
+                1 => EventOutcomeTier.PartialSuccess,
+                _ => EventOutcomeTier.Failure,
+            };
+        }
+
         _orbit.RemoveById(eventId);
 
         // Task 13 Stage 1：偵測 triggerBattle effect 寫入的 PendingBattleId → 開戰鬥子場景
         TryTriggerPendingBattle();
+
+        // S7：事件結算可能改變 flags / equipment / intel / outcomes，影響其他事件 reveal —
+        // 觸發 OrbitProjection.Refresh 重畫 ORBIT 卡片 Class + tooltip。
+        _projection?.Refresh();
+
+        // Phase 3 任務 14（S2）· Drain — 結算完當前事件後，若 PendingEventQueue 還有，接力下一張。
+        // 用 CallDeferred 推到下一 idle frame，避免 dialog Hide() / Open() 在同一 frame 互相打架。
+        TryDrainPendingEventQueue();
+    }
+
+    /// <summary>
+    /// Phase 3 任務 14（S2）· 從 PendingEventQueue 取下一張事件接力觸發。
+    /// 過濾已消費事件；用 CallDeferred 推到下一 idle frame，避免對話框 Hide/Open 同 frame race。
+    /// </summary>
+    private void TryDrainPendingEventQueue()
+    {
+        if (_gameState is null || _module is null) return;
+        while (_gameState.PendingEventQueue.Count > 0)
+        {
+            var nextId = _gameState.PendingEventQueue[0];
+            _gameState.PendingEventQueue.RemoveAt(0);
+            if (_gameState.ConsumedEventIds.Contains(nextId)) continue;
+            if (!_module.Events.TryGetValue(nextId, out var nextCard)) continue;
+            // CallDeferred 避免重入；OnEventTriggered 自身會處理 Visible guard。
+            CallDeferred(nameof(DeferredOpenEvent), nextCard.Id);
+            return;
+        }
+    }
+
+    /// <summary>CallDeferred 入口（Godot 不能直接傳遞 EventCard 物件，只能傳基本型別）。</summary>
+    private void DeferredOpenEvent(string eventId)
+    {
+        if (_module is null) return;
+        if (!_module.Events.TryGetValue(eventId, out var card)) return;
+        OnEventTriggered(card);
     }
 
     /// <summary>
@@ -731,20 +855,6 @@ public partial class MainBootstrap : Control
         if (!_gameState.TileMap.TryGetValue((col, row), out var placed)) return null;
         if (!_module.Tiles.TryGetValue(placed.TileId, out var tileDef)) return null;
         return CardNarrative.Core.Map.TileVisualProfileResolver.ResolveTerrain(tileDef);
-    }
-
-    /// <summary>
-    /// Task 9 Part A · 玩家每次移動觸發 — 隨機把 1 張 ClassC 升為 ClassA（模擬 tile-enter 觸發）。
-    /// 真正的條件式 reveal/trigger 評估留待後續 PR（接 JsonLogicContextBuilder + 真實 GameState）。
-    /// </summary>
-    private void PromoteRandomEventToClassA()
-    {
-        if (_orbit is null) return;
-        var classCs = _orbit.Pending.Where(i => i.Class == EventOrbitClass.ClassC && !i.IsEnding).ToList();
-        if (classCs.Count == 0) return;
-        var pick = classCs[_orbitDemoRng.Next(classCs.Count)];
-        _orbit.Promote(pick, EventOrbitClass.ClassA);
-        _mainMap?.AppendLog($"ORBIT 揭露：{pick.Card.Name}（已可結算）");
     }
 
     private void OnHandCardClicked(string cardId)

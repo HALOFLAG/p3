@@ -100,3 +100,41 @@ public enum ProgressReason
     EventOutcome,
     ClueInvestment
 }
+
+/// <summary>
+/// Phase 3 任務 14（S2）· 玩家動作 verb — 與 <see cref="ActionType"/>（行動卡分類）不同；
+/// 此 enum 是「玩家在行動階段做了什麼」的細粒度分類，供 <see cref="EventTrigger"/>
+/// 的 PlayerActionTrigger 命中判斷與 <see cref="State.GameState.ActionCounts"/> 累積使用。
+///
+/// JSON 序列化採小寫字串（playerAction trigger 寫 "kind": "observe" 等）。
+/// **未知 kind 反序列化時 fallback 為 <see cref="Interact"/> + warn log**，避免新增 verb
+/// 時老版本 client 反序列化炸；模組作者文件需明確列出已支援 kind。
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PlayerActionKind
+{
+    /// <summary>移動：WorldMap.TryMovePlayerTo / TurnLoop.Move。</summary>
+    Move,
+    /// <summary>休息：TurnLoop.Rest / WorldMap.Rest。</summary>
+    Rest,
+    /// <summary>觀察（"explore"）：WorldMap.Observe。</summary>
+    Observe,
+    /// <summary>對話（"talk"）：TileInteraction Communication 類。</summary>
+    Talk,
+    /// <summary>出牌：TurnLoop.PlayCard。</summary>
+    PlayCard,
+    /// <summary>整理手牌：TurnLoop.Mulligan。</summary>
+    Mulligan,
+    /// <summary>專注：TurnLoop.Focus。</summary>
+    Focus,
+    /// <summary>偵察：TurnLoop.Scout。</summary>
+    Scout,
+    /// <summary>採集資源：TurnLoop.CollectResource。</summary>
+    CollectResource,
+    /// <summary>投入線索推進地塊：TurnLoop.InvestCluesForProgress。</summary>
+    InvestClue,
+    /// <summary>交換裝備：TurnLoop.SwapEquipment。</summary>
+    SwapEquipment,
+    /// <summary>地塊互動（fallback：未知 kind 也歸此類）：TileInteractionService.Execute 非 Communication 類。</summary>
+    Interact,
+}

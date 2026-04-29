@@ -96,8 +96,12 @@ public partial class OrbitCardView : PanelContainer
         vbox.AddChild(_statLabel);
     }
 
-    /// <summary>填入事件實例（EventCard + EventOrbitClass + IsEnding）。</summary>
-    public void SetEvent(EventInstance instance)
+    /// <summary>
+    /// 填入事件實例（EventCard + EventOrbitClass + IsEnding）。
+    /// S7：可選 <paramref name="hint"/> 參數設為 hover tooltip（OrbitProjection.HintFor 結果）；
+    /// 為 null 時不顯示卡名外的額外提示。
+    /// </summary>
+    public void SetEvent(EventInstance instance, string? hint = null)
     {
         if (_nameLabel == null) _Ready(); // 避免在 _Ready 之前被呼叫
 
@@ -106,6 +110,8 @@ public partial class OrbitCardView : PanelContainer
         MouseFilter = MouseFilterEnum.Stop;
 
         AddThemeStyleboxOverride("panel", BuildCardStyle(instance.IsEnding));
+        // S7：tooltip 顯示提示文字（trigger 模板 + reveal 摘要）。
+        TooltipText = hint ?? string.Empty;
 
         if (_typeBand != null)
         {
@@ -129,6 +135,7 @@ public partial class OrbitCardView : PanelContainer
 
         CurrentInstance = null;
         MouseFilter = MouseFilterEnum.Ignore;
+        TooltipText = string.Empty;
 
         AddThemeStyleboxOverride("panel", EmptyStyle);
         if (_typeBand != null)

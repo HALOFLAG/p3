@@ -44,6 +44,8 @@ public sealed class ModuleLoader
         var equipment   = LoadArray<Equipment>(moduleFolder, "equipment.json",       "equipment.schema.json",      errors);
         var endings     = LoadArray<Ending>(moduleFolder, "endings.json",            "ending.schema.json",         errors);
         var battles     = LoadArrayOptional<BattleCard>(moduleFolder, "battles.json", "battle.schema.json",       errors);
+        // Phase 3 任務 14（S4）· intel.json 選用；缺檔則 Module.Intel 為空 dict。
+        var intel       = LoadArrayOptional<Intel>(moduleFolder, "intel.json", "intel.schema.json", errors);
 
         if (prologue is null || tiles is null || characters is null || companions is null
             || events is null || actionCards is null || equipment is null || endings is null)
@@ -93,13 +95,34 @@ public sealed class ModuleLoader
             }
         }
 
+        // Phase 3 任務 14（S5）· prologue.eventPriorities 每個 id 必須存在於 events.json。
+        // 允許 partial 列表（未列入者 fallback 至 module 載入序），但已列入的 id 必須真的有事件對應。
+        if (prologue.EventPriorities.Count > 0)
+        {
+            var eventIds = new HashSet<string>(events.Select(e => e.Id), StringComparer.Ordinal);
+            for (int i = 0; i < prologue.EventPriorities.Count; i++)
+            {
+                if (!eventIds.Contains(prologue.EventPriorities[i]))
+                {
+                    errors.Add(new ValidationError("prologue.json",
+                        $"/eventPriorities/{i}",
+                        $"eventPriorities event id '{prologue.EventPriorities[i]}' not found in events"));
+                }
+            }
+        }
+
         var battleMap = battles is null
             ? (IReadOnlyDictionary<string, BattleCard>)new Dictionary<string, BattleCard>(StringComparer.Ordinal)
             : BuildIdMap(battles, "battles.json", b => b.Id, errors);
 
+        // Phase 3 任務 14（S4）· intel.json id 唯一性 + 給 GrantIntelEffect 反向查表用。
+        var intelMap = intel is null
+            ? (IReadOnlyDictionary<string, Intel>)new Dictionary<string, Intel>(StringComparer.Ordinal)
+            : BuildIdMap(intel, "intel.json", i => i.Id, errors);
+
         foreach (var ev in events)
         {
-            ValidateEventEffects(ev, battleMap, errors);
+            ValidateEventEffects(ev, battleMap, intelMap, errors);
         }
 
         if (errors.Count > 0)
@@ -116,7 +139,10 @@ public sealed class ModuleLoader
             BuildIdMap(equipment,   "equipment.json",      e => e.Id, errors),
             BuildIdMap(endings,     "endings.json",        e => e.Id, errors),
             battleMap
-        );
+        )
+        {
+            Intel = intelMap,
+        };
 
         return errors.Count > 0
             ? new ModuleLoadResult.Failure(errors)
@@ -146,6 +172,7 @@ public sealed class ModuleLoader
     private static void ValidateEventEffects(
         EventCard ev,
         IReadOnlyDictionary<string, BattleCard> battles,
+        IReadOnlyDictionary<string, Intel> intel,
         List<ValidationError> errors)
     {
         Walk(ev.Outcomes.Success.Effects);
@@ -161,6 +188,12 @@ public sealed class ModuleLoader
                     errors.Add(new ValidationError("events.json",
                         $"/[id={ev.Id}]/outcomes/.../effects/triggerBattle",
                         $"battleId '{tb.BattleId}' not found in battles.json"));
+                }
+                if (e is GrantIntelEffect gi && !intel.ContainsKey(gi.Id))
+                {
+                    errors.Add(new ValidationError("events.json",
+                        $"/[id={ev.Id}]/outcomes/.../effects/grantIntel",
+                        $"intel id '{gi.Id}' not found in intel.json"));
                 }
                 if (e is RollCheckEffect rc && rc.OnFailure is { } onf)
                     Walk(onf);

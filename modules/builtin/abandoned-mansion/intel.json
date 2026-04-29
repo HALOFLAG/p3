@@ -1,0 +1,8 @@
+[
+  {
+    "id": "underground-passage",
+    "name": "教堂下的地下道",
+    "description": "你從村民閒談與教堂神父留下的日誌中得知，教堂底下藏著一條通往洋房深處的地下通道——這條路徑在所有官方紀錄中都被刻意抹去。",
+    "unlocksTags": ["underground"]
+  }
+]

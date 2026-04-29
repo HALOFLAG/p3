@@ -1,6 +1,10 @@
 // TileDeckService — 地塊牌庫抽取 + 合法放置位置判斷（Plan B 標籤規則）。
 // Draw/Peek：操作 GameState.TileDeck；Place：檢查相鄰空格 + 標籤共通；
 // GetValidPlacementCells：結構相鄰（不含標籤規則）；GetValidPlacementCellsForTile：含標籤規則。
+//
+// Phase 3 任務 14（S4）· Intel UnlocksTags 過濾：
+//   若候選 tile 含 tag T、且模組存在某 Intel 在 UnlocksTags 中列出 T、
+//   且玩家未取得任何「UnlocksTags 含 T」的 Intel → 此 tile 不可放置（A5「教堂下的地下道」用法）。
 using CardNarrative.Core.Models;
 using CardNarrative.Core.State;
 
@@ -66,6 +70,11 @@ public static class TileDeckService
         bool isMultiCopy = module.Tiles.TryGetValue(tileId, out var tileDef) && tileDef.Copies > 1;
         bool isBridge = tileDef is not null && tileDef.Tags.Count >= 2;
 
+        // Phase 3 任務 14（S4）· Intel 鎖：若 tile 含某 tag T、且 module 中有 Intel 在 UnlocksTags 列 T，
+        // 但玩家未取得任一含 T 的 Intel → 整個 tile 任何位置都不可放置，直接回空清單。
+        if (IsTileTagLockedByIntel(state, module, tileDef))
+            return Array.Empty<Position>();
+
         foreach (var cell in structural)
         {
             // 1. Same-id adjacency once copies exist
@@ -87,6 +96,32 @@ public static class TileDeckService
             filtered.Add(cell);
         }
         return filtered;
+    }
+
+    /// <summary>
+    /// Phase 3 任務 14（S4）· 判斷 tile 是否因「需先取得情報」而被鎖。
+    /// 規則：tile.Tags 含某 tag T，且模組存在某 Intel 在 UnlocksTags 含 T；
+    ///       但玩家 state.AcquiredIntel 未含任一「UnlocksTags 含 T」的 Intel id。
+    /// 缺 tileDef / module.Intel 為空 / tile 無 tag → 永遠回 false（非鎖定）。
+    /// </summary>
+    public static bool IsTileTagLockedByIntel(GameState state, Module module, Tile? tile)
+    {
+        if (tile is null || tile.Tags.Count == 0 || module.Intel.Count == 0) return false;
+        foreach (var tag in tile.Tags)
+        {
+            // 是否有 Intel 把此 tag 列為 UnlocksTags？
+            bool tagIsLockable = false;
+            bool tagAlreadyUnlocked = false;
+            foreach (var inI in module.Intel.Values)
+            {
+                if (inI.UnlocksTags.Count == 0) continue;
+                if (!inI.UnlocksTags.Contains(tag)) continue;
+                tagIsLockable = true;
+                if (state.AcquiredIntel.Contains(inI.Id)) { tagAlreadyUnlocked = true; break; }
+            }
+            if (tagIsLockable && !tagAlreadyUnlocked) return true;
+        }
+        return false;
     }
 
     /// <summary>True if any cell on the map is occupied by a PlacedTile with TileId == <paramref name="tileId"/>.</summary>
@@ -239,6 +274,11 @@ public static class TileDeckService
         }
         if (!IsTagPlacementAllowed(state, module, tileId, pos))
             throw new InvalidOperationException($"tile '{tileId}' cannot be placed at ({pos.X},{pos.Y}): no adjacent tile shares a tag");
+
+        // Phase 3 任務 14（S4）· Intel 鎖：tile 含 tag 但玩家未取得對應情報 → 拒絕放置。
+        if (IsTileTagLockedByIntel(state, module, tileDef))
+            throw new InvalidOperationException(
+                $"tile '{tileId}' is locked: requires intel to unlock one of its tags. Player has not acquired the required intel yet.");
 
         state.TileDeck.RemoveAt(0);
         state.TileMap[(pos.X, pos.Y)] = new PlacedTile { TileId = tileId, Level = ExplorationLevel.Unknown };

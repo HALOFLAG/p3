@@ -43,10 +43,11 @@
     "narrative": "教堂的長椅早已歪斜，祭壇後方的牆上殘留著被反覆塗改的壁畫：先是聖人，再是野獸，最後是一圈你不認得的幾何符號。祭壇上壓著一本封皮龜裂的日誌，紙頁被潮氣黏在一起。",
     "outcomes": {
       "success": {
-        "narrative": "你小心翼翼地翻開日誌，一位老神父的字跡層層疊疊：『……赫斯利家從未真正離開。他們只是走得更深。地下的聲音再也蓋不住了。』書頁最末夾著一小瓶貼有十字標的玻璃瓶。",
+        "narrative": "你小心翼翼地翻開日誌，一位老神父的字跡層層疊疊：『……赫斯利家從未真正離開。他們只是走得更深。地下的聲音再也蓋不住了。』書頁最末夾著一小瓶貼有十字標的玻璃瓶，以及一張描繪『地下通道』的草圖。",
         "effects": [
           { "type": "setFlag", "key": "priest_diary_read", "value": true },
           { "type": "grantEquipment", "id": "holy-water-vial" },
+          { "type": "grantIntel", "id": "underground-passage" },
           { "type": "grantResource", "key": "clue", "amount": 1 },
           { "type": "tileProgress", "delta": 1 }
         ]
@@ -168,6 +169,7 @@
     "type": "exploration",
     "tn": 11,
     "trigger": { "type": "tileEnter", "tileId": "mansion-study" },
+    "revealCondition": { ">=": [{"var": "turn"}, 5] },
     "stat": "intellect",
     "allowedActionTypes": ["exploration", "thinking"],
     "narrative": "隨著暴風雨的到來，你無法離開這黑暗的房間。房間中唯一的光源是書桌角落的一盞油燈，以及一本攤開的日誌。『調查進行的還順利嗎？』你彷彿聽見赫斯利先生最後的低語在雨聲之間浮現。你必須集中精神，無視大雨的聲響及屋外的腳步聲。",
@@ -398,6 +400,7 @@
     "type": "exploration",
     "tn": 10,
     "trigger": { "type": "tileEnter", "tileId": "mansion-study" },
+    "revealCondition": { "var": "event.storm-investigation.consumed" },
     "stat": "skill",
     "allowedActionTypes": ["exploration", "thinking"],
     "narrative": "書房天花板傳來令人毛骨悚然的嘎吱聲，大塊的灰泥從主梁剝落。若不盡快退離，整個空間很可能在下一刻塌陷。",
